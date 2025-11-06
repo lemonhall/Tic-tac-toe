@@ -17,6 +17,7 @@ class ExampleAgent:
         self.player = None  # 'X' or 'O'
         self.game_active = False  # 游戏是否进行中
         self.timer = None  # 定时器对象
+        self.game_version = 0  # 游戏版本号，用于防止旧定时器操作新游戏
         
     def create_game(self, player_x='agent', player_o='ai'):
         """创建游戏"""
@@ -131,9 +132,17 @@ class ExampleAgent:
         if not self.game_active:
             return
         
+        # 捕获当前游戏版本，防止旧定时器操作新游戏
+        current_version = self.game_version
+        
         try:
             game_state = self.get_game_state()
             if game_state:
+                # 检查游戏版本是否已变化（新游戏已开始）
+                if self.game_version != current_version:
+                    print(f"⚠️ [定时检查] 游戏已更新，停止当前检查")
+                    return
+                
                 # 首先检查游戏是否已结束
                 status = game_state.get('status')
                 if status == 'finished':
@@ -157,7 +166,7 @@ class ExampleAgent:
                     print("\n⏳ 2秒后自动开始下一局...")
                     time.sleep(2)
                     self.start_new_game()
-                    return
+                    return  # ← 重要！返回后不再执行下面的定时器重置
                 
                 current_player = game_state.get('current_player')
                 if current_player == self.player:
@@ -171,7 +180,8 @@ class ExampleAgent:
             print(f"❌ [定时检查] 出错: {e}")
         
         # 重新设置定时器，2秒后再检查
-        if self.game_active:
+        # 注意：只有游戏还活跃且版本未变化才设置
+        if self.game_active and self.game_version == current_version:
             self.timer = threading.Timer(2.0, self.check_and_move)
             self.timer.daemon = True
             self.timer.start()
@@ -212,6 +222,9 @@ class ExampleAgent:
         if self.timer:
             self.timer.cancel()
             self.timer = None
+        
+        # 增加游戏版本号，防止旧定时器操作新游戏
+        self.game_version += 1
         
         # 创建新游戏
         if self.create_game('agent', 'ai'):
