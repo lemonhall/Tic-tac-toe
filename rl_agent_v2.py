@@ -343,27 +343,118 @@ def train_agent_v2(total_timesteps=10000, model_path='models/rl_agent_v2_ppo'):
     return model
 
 
+def test_agent_v2(model_path='models/rl_agent_v2_ppo', num_games=10):
+    """测试训练好的V2 Agent（只推理，不学习）"""
+    print("="*60)
+    print("测试强化学习Agent V2 - 纯推理模式")
+    print("="*60)
+    print(f"模型: {model_path}.zip")
+    print(f"测试局数: {num_games}")
+    print("注意：模型不会继续学习，只会使用已学到的策略\n")
+    
+    # 加载模型
+    if not os.path.exists(f"{model_path}.zip"):
+        print(f"❌ 错误：找不到模型文件 {model_path}.zip")
+        print("请先训练模型：python rl_agent_v2.py --train 5000")
+        return
+    
+    # 创建环境
+    env = TicTacToeEnv(opponent='ai')
+    env = ActionMasker(env, lambda e: e.action_masks())
+    
+    print("✓ 加载模型...")
+    model = MaskablePPO.load(model_path, env=env)
+    print("✓ 模型加载成功\n")
+    
+    # 测试游戏
+    wins = 0
+    losses = 0
+    draws = 0
+    
+    for game_num in range(num_games):
+        obs, _ = env.reset()
+        done = False
+        step_count = 0
+        
+        print(f"\n游戏 {game_num + 1}/{num_games}:")
+        
+        while not done:
+            # 获取动作掩码
+            action_masks = env.action_masks()
+            
+            # 使用训练好的策略（deterministic=True 表示确定性输出）
+            action, _ = model.predict(obs, action_masks=action_masks, deterministic=True)
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            step_count += 1
+            
+            if done:
+                result = info.get('result', 'unknown')
+                if result == 'win':
+                    wins += 1
+                    print(f"  ✓ 胜利！用了 {step_count} 步")
+                elif result == 'loss':
+                    losses += 1
+                    print(f"  ✗ 失败。用了 {step_count} 步")
+                elif result == 'draw':
+                    draws += 1
+                    print(f"  - 平局。用了 {step_count} 步")
+        
+        time.sleep(0.5)  # 游戏间隔
+    
+    # 显示统计
+    print("\n" + "="*60)
+    print("测试完成！")
+    print("="*60)
+    print(f"总局数: {num_games}")
+    print(f"胜利: {wins} ({wins/num_games*100:.1f}%)")
+    print(f"失败: {losses} ({losses/num_games*100:.1f}%)")
+    print(f"平局: {draws} ({draws/num_games*100:.1f}%)")
+    print(f"\n胜率: {wins/num_games*100:.1f}%")
+    print(f"平局率: {draws/num_games*100:.1f}%")
+    
+    env.close()
+
+
 if __name__ == '__main__':
     import sys
     
-    # 解析命令行参数（兼容 --train 格式）
+    # 解析命令行参数
     if len(sys.argv) > 1:
-        if sys.argv[1] == '--train' and len(sys.argv) > 2:
-            timesteps = int(sys.argv[2])
-        elif sys.argv[1].isdigit():
-            timesteps = int(sys.argv[1])
+        command = sys.argv[1]
+        
+        if command == '--train':
+            # 训练模式：模型会持续学习
+            timesteps = int(sys.argv[2]) if len(sys.argv) > 2 else 5000
+            print("\n⭐ 训练模式 - 模型会学习和改进")
+            train_agent_v2(total_timesteps=timesteps)
+        
+        elif command == '--test':
+            # 测试模式：只推理，不学习
+            num_games = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+            print("\n⭐ 测试模式 - 模型不会学习，只使用已有策略")
+            test_agent_v2(num_games=num_games)
+        
+        elif command.isdigit():
+            # 向后兼容：直接输入数字表示训练步数
+            timesteps = int(command)
+            print("\n⭐ 训练模式 - 模型会学习和改进")
+            train_agent_v2(total_timesteps=timesteps)
+        
         else:
             print("使用方法:")
-            print("  python rl_agent_v2.py [步数]")
-            print("  python rl_agent_v2.py --train [步数]")
+            print("  训练: python rl_agent_v2.py --train [步数]")
+            print("  测试: python rl_agent_v2.py --test [局数]")
             print("\n示例:")
-            print("  python rl_agent_v2.py 5000")
-            print("  python rl_agent_v2.py --train 5000")
+            print("  python rl_agent_v2.py --train 5000  # 训练5000步")
+            print("  python rl_agent_v2.py --test 20     # 测试20局（不学习）")
             sys.exit(1)
     else:
-        timesteps = 5000
-    
-    print("\n⭐ 使用动作掩码版本 - 消除非法移动问题")
-    print("这个版本会更高效地学习！\n")
-    
-    train_agent_v2(total_timesteps=timesteps)
+        # 默认显示帮助
+        print("使用方法:")
+        print("  训练: python rl_agent_v2.py --train [步数]")
+        print("  测试: python rl_agent_v2.py --test [局数]")
+        print("\n示例:")
+        print("  python rl_agent_v2.py --train 5000")
+        print("  python rl_agent_v2.py --test 20")
+        sys.exit(0)
