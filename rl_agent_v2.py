@@ -197,14 +197,14 @@ class TicTacToeEnv(gym.Env):
             
             if winner == self.player:
                 self.wins += 1
-                return obs, 10, True, False, {'result': 'win'}
+                return obs, 20, True, False, {'result': 'win'}
             elif winner is None:
                 # 平局 - 对于先手玩家,平局是不错的结果(对手没犯错)
                 self.draws += 1
-                return obs, 5, True, False, {'result': 'draw'}
+                return obs, 2, True, False, {'result': 'draw'}
             else:
                 self.losses += 1
-                return obs, -10, True, False, {'result': 'loss'}
+                return obs, -15, True, False, {'result': 'loss'}
         
         # 游戏继续，请求对手下棋
         self._request_ai_move()
