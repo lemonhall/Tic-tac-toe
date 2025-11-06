@@ -42,6 +42,16 @@ export class UIManager {
         
         // 模态框自动关闭定时器
         this.modalAutoCloseTimer = null;
+        
+        // 音效
+        this.sounds = {
+            move: new Audio('/static/sounds/piece.mp3'),
+            gameEnd: new Audio('/static/sounds/game_end.wav')
+        };
+        
+        // 设置音效音量
+        this.sounds.move.volume = 0.3;
+        this.sounds.gameEnd.volume = 0.5;
     }
 
     // 渲染棋盘
@@ -67,6 +77,11 @@ export class UIManager {
         
         cell.textContent = value;
         cell.classList.add('occupied', value.toLowerCase());
+        
+        // 播放落子音效
+        if (value) {
+            this.playSound('move');
+        }
     }
 
     // 显示获胜线条
@@ -215,6 +230,9 @@ export class UIManager {
         this.elements.modalMessage.textContent = message;
         this.elements.modal.classList.add('show');
         
+        // 播放游戏结束音效
+        this.playSound('gameEnd');
+        
         // 如果需要自动关闭，3秒后关闭模态框
         if (autoClose) {
             // 清除之前的定时器（如果存在）
@@ -285,6 +303,26 @@ export class UIManager {
             button.removeAttribute('disabled');
         } else {
             button.setAttribute('disabled', 'true');
+        }
+    }
+
+    // 播放音效
+    playSound(soundType) {
+        try {
+            if (soundType === 'move' && this.sounds.move) {
+                // 重置音效播放位置，允许快速连续播放
+                this.sounds.move.currentTime = 0;
+                this.sounds.move.play().catch(error => {
+                    console.log('落子音效播放失败:', error);
+                });
+            } else if (soundType === 'gameEnd' && this.sounds.gameEnd) {
+                this.sounds.gameEnd.currentTime = 0;
+                this.sounds.gameEnd.play().catch(error => {
+                    console.log('结束音效播放失败:', error);
+                });
+            }
+        } catch (error) {
+            console.log('音效播放出错:', error);
         }
     }
 }
