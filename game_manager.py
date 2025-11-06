@@ -4,6 +4,7 @@
 """
 from typing import Dict, Optional
 from game_logic import TicTacToeGame, GameStatus
+from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,9 +13,11 @@ logger = logging.getLogger(__name__)
 class GameManager:
     """游戏管理器"""
     
-    def __init__(self):
+    def __init__(self, game_ttl_minutes: int = 30):
         self.games: Dict[str, TicTacToeGame] = {}
         self.event_queues: Dict[str, list] = {}  # 存储每个游戏的事件队列
+        self.game_timestamps: Dict[str, datetime] = {}  # 记录游戏创建时间
+        self.game_ttl_minutes = game_ttl_minutes  # 游戏保留时间（分钟）
     
     def create_game(self, player_x_type: str = "human", player_o_type: str = "human") -> TicTacToeGame:
         """
@@ -23,6 +26,10 @@ class GameManager:
         game = TicTacToeGame(player_x_type, player_o_type)
         self.games[game.game_id] = game
         self.event_queues[game.game_id] = []
+        self.game_timestamps[game.game_id] = datetime.now()
+        
+        # 定期清理过期游戏
+        self._cleanup_expired_games()
         
         logger.info(f"创建游戏: {game.game_id}, X类型: {player_x_type}, O类型: {player_o_type}")
         
@@ -160,6 +167,48 @@ class GameManager:
         检查是否有待发送的事件
         """
         return game_id in self.event_queues and len(self.event_queues[game_id]) > 0
+    
+    def _cleanup_expired_games(self):
+        """
+        清理过期的已完成游戏
+        保留所有进行中的游戏和最近创建的已完成游戏
+        """
+        now = datetime.now()
+        expired_games = []
+        
+        for game_id, timestamp in self.game_timestamps.items():
+            if game_id not in self.games:
+                continue
+            
+            game = self.games[game_id]
+            
+            # 检查游戏是否已完成且超过TTL
+            if game.status == GameStatus.FINISHED:
+                age_minutes = (now - timestamp).total_seconds() / 60
+                if age_minutes > self.game_ttl_minutes:
+                    expired_games.append(game_id)
+        
+        # 删除过期的游戏
+        for game_id in expired_games:
+            self.delete_game(game_id)
+            logger.info(f"清理过期游戏: {game_id}")
+    
+    def cleanup_old_finished_games(self, keep_count: int = 10):
+        """
+        主动清理旧的已完成游戏，只保留最近的N个
+        """
+        # 获取所有已完成的游戏，按时间排序
+        finished_games = [
+            (game_id, timestamp)
+            for game_id, timestamp in self.game_timestamps.items()
+            if game_id in self.games and self.games[game_id].status == GameStatus.FINISHED
+        ]
+        finished_games.sort(key=lambda x: x[1], reverse=True)
+        
+        # 删除超过keep_count的旧游戏
+        for game_id, _ in finished_games[keep_count:]:
+            self.delete_game(game_id)
+            logger.info(f"删除旧的已完成游戏: {game_id}")
 
 
 # 全局游戏管理器实例

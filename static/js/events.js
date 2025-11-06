@@ -54,9 +54,15 @@ export class EventHandler {
     // 设置模式选择事件
     setupModeEvents() {
         this.ui.elements.modeBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const mode = btn.dataset.mode;
-                this.controller.setGameMode(mode);
+                
+                // 如果选择观战模式，触发观战流程
+                if (mode === 'spectator') {
+                    await this.controller.spectateGame();
+                } else {
+                    this.controller.setGameMode(mode);
+                }
             });
         });
     }

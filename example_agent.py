@@ -72,6 +72,18 @@ class ExampleAgent:
             print(f"✗ 移动失败: {response.text}")
             return False
     
+    def request_ai_move(self):
+        """请求对方AI下棋"""
+        url = f'{self.base_url}/api/game/{self.game_id}/ai-move'
+        response = requests.post(url)
+        
+        if response.status_code == 200:
+            print(f"✓ 已请求AI移动")
+            return True
+        else:
+            print(f"✗ 请求AI移动失败: {response.text}")
+            return False
+    
     def listen_and_play(self):
         """监听游戏事件并自动下棋"""
         url = f'{self.base_url}/api/game/{self.game_id}/events'
@@ -123,11 +135,21 @@ class ExampleAgent:
             
             print(f"📍 玩家 {player} 移动到 ({row}, {col})")
             
-            # 如果下一个是我，准备下棋
-            if next_player == self.player:
-                # 获取当前状态
-                game_state = self.get_game_state()
-                if game_state:
+            # 获取游戏状态，检查下一个玩家的类型
+            game_state = self.get_game_state()
+            if game_state:
+                player_x_type = game_state.get('player_x_type')
+                player_o_type = game_state.get('player_o_type')
+                
+                # 判断下一个玩家的类型
+                next_player_type = player_x_type if next_player == 'X' else player_o_type
+                
+                # 如果下一个玩家是AI，请求AI移动
+                if next_player_type == 'ai':
+                    print(f"🤖 下一个是AI玩家，请求AI移动...")
+                    self.request_ai_move()
+                # 如果下一个是我，准备下棋
+                elif next_player == self.player:
                     time.sleep(0.5)  # 模拟思考
                     board = game_state.get('board')
                     move = self.decide_move(board)

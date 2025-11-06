@@ -9,6 +9,7 @@ import time
 import logging
 import os
 import mimetypes
+from threading import Thread
 from game_manager import game_manager
 from ai_strategy import SimpleAI, TicTacToeAI
 
@@ -254,13 +255,43 @@ def game_events(game_id):
 def list_games():
     """
     列出所有游戏
+    可选参数: status=in_progress 只返回进行中的游戏
     """
     try:
-        games = game_manager.get_all_games()
+        status_filter = request.args.get('status', None)
+        
+        all_games = game_manager.get_all_games()
+        
+        # 如果指定了状态过滤
+        if status_filter:
+            filtered_games = {
+                game_id: game 
+                for game_id, game in all_games.items() 
+                if game.get('status') == status_filter
+            }
+        else:
+            filtered_games = all_games
+        
+        # 添加更多有用的信息
+        games_with_info = {}
+        for game_id, game in filtered_games.items():
+            games_with_info[game_id] = {
+                'game_id': game_id,
+                'status': game['status'],
+                'player_x_type': game['player_x_type'],
+                'player_o_type': game['player_o_type'],
+                'current_player': game['current_player'],
+                'move_count': game['move_count'],
+                'winner': game['winner'],
+                'created_at': game['created_at'],
+                'updated_at': game['updated_at']
+            }
+        
         return jsonify({
             "status": "success",
-            "games": games,
-            "count": len(games)
+            "games": games_with_info,
+            "count": len(games_with_info),
+            "total_games": len(all_games)
         })
     except Exception as e:
         logger.error(f"获取游戏列表失败: {str(e)}")
@@ -343,7 +374,33 @@ def internal_error(error):
     }), 500
 
 
+def cleanup_games_background():
+    """
+    后台定期清理过期游戏
+    """
+    while True:
+        try:
+            time.sleep(60)  # 每60秒执行一次
+            
+            # 清理过期游戏（只保留最近20个已完成的游戏）
+            before_count = len(game_manager.games)
+            game_manager.cleanup_old_finished_games(keep_count=20)
+            after_count = len(game_manager.games)
+            
+            if before_count != after_count:
+                logger.info(f"游戏清理: 删除了 {before_count - after_count} 个旧游戏, 当前游戏数: {after_count}")
+        except Exception as e:
+            logger.error(f"游戏清理失败: {str(e)}")
+
+
 if __name__ == '__main__':
     logger.info("启动井字棋决斗场服务器...")
     logger.info("访问 http://localhost:5000 开始游戏")
+    
+    # 启动后台清理线程
+    cleanup_thread = Thread(target=cleanup_games_background, daemon=True)
+    cleanup_thread.start()
+    logger.info("已启动游戏清理后台线程")
+    
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+

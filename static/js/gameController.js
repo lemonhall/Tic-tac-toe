@@ -147,6 +147,146 @@ export class GameController {
         this.ui.showMessage('暂停功能待实现', 'warning');
     }
 
+    // 观战游戏
+    async spectateGame() {
+        try {
+            this.ui.showMessage('正在获取进行中的游戏...', 'info');
+            
+            const games = await this.api.getGamesList('in_progress');
+            
+            if (Object.keys(games).length === 0) {
+                this.ui.showMessage('当前没有进行中的游戏', 'warning');
+                return;
+            }
+            
+            const gameEntries = Object.entries(games);
+            
+            // 如果只有一个游戏，自动加入
+            if (gameEntries.length === 1) {
+                const [gameId] = gameEntries[0];
+                await this.joinSpectatorGame(gameId);
+            } else {
+                // 如果有多个游戏，显示列表让用户选择
+                this.showGameListModal(gameEntries);
+            }
+        } catch (error) {
+            console.error('观战游戏失败:', error);
+            this.ui.showMessage('观战游戏失败: ' + error.message, 'error');
+        }
+    }
+
+    // 加入观战游戏
+    async joinSpectatorGame(gameId) {
+        try {
+            this.ui.showMessage('正在加入游戏...', 'info');
+            
+            // 获取游戏状态
+            const response = await this.api.getGameState(gameId);
+            
+            if (response.status === 'success') {
+                const gameState = response.game_state;
+                
+                // 初始化为观战模式
+                this.state.initGame(gameId, gameState.player_x_type, gameState.player_o_type);
+                this.state.updateFromServer(gameState);
+                this.state.setSpectatorMode(true);
+                
+                // 连接SSE
+                this.connectToGameEvents(gameId);
+                
+                // 更新UI
+                this.ui.renderBoard(this.state.board);
+                this.ui.updateGameInfo(gameId, this.state.currentPlayer, this.state.gameStatus);
+                this.ui.updateCurrentPlayer(this.state.currentPlayer, this.state.getCurrentPlayerType());
+                this.ui.clearMoveHistory();
+                this.ui.hideWinningLine();
+                this.ui.setBoardEnabled(false);  // 观战模式禁用棋盘
+                this.ui.setActiveMode('spectator');
+                
+                this.ui.showMessage('已加入观战，游戏ID: ' + gameId, 'success');
+            } else {
+                this.ui.showMessage('获取游戏状态失败', 'error');
+            }
+        } catch (error) {
+            console.error('加入观战游戏失败:', error);
+            this.ui.showMessage('加入观战游戏失败: ' + error.message, 'error');
+        }
+    }
+
+    // 显示游戏列表模态框
+    showGameListModal(games) {
+        // 创建模态框容器
+        const modalId = 'game-list-modal';
+        let modal = document.getElementById(modalId);
+        
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = modalId;
+            modal.className = 'modal';
+            document.body.appendChild(modal);
+        }
+        
+        // 生成游戏列表HTML
+        const gameListHTML = games.map(([gameId, game], index) => {
+            const status = `${game.player_x_type} vs ${game.player_o_type}`;
+            const moves = game.move_count || 0;
+            const displayId = gameId.substring(0, 8) + '...';
+            
+            return `
+                <div class="game-item" data-game-id="${gameId}">
+                    <div class="game-info">
+                        <div class="game-id">${displayId}</div>
+                        <div class="game-details">${status} • ${moves}步</div>
+                    </div>
+                    <button class="game-select-btn" data-game-id="${gameId}">观战</button>
+                </div>
+            `;
+        }).join('');
+        
+        // 设置模态框内容
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>选择观战的游戏</h2>
+                </div>
+                <div class="modal-body" style="padding: 0;">
+                    <div class="game-list">
+                        ${gameListHTML}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="modal-btn secondary" id="cancel-spectate">取消</button>
+                </div>
+            </div>
+        `;
+        
+        // 显示模态框
+        modal.classList.add('show');
+        
+        // 为所有"观战"按钮添加事件监听
+        modal.querySelectorAll('.game-select-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const gameId = e.target.getAttribute('data-game-id');
+                modal.classList.remove('show');
+                this.joinSpectatorGame(gameId);
+            });
+        });
+        
+        // 为"取消"按钮添加事件监听
+        modal.querySelector('#cancel-spectate').addEventListener('click', () => {
+            modal.classList.remove('show');
+            this.ui.showMessage('已取消观战', 'info');
+        });
+        
+        // 点击背景关闭模态框
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('show');
+                this.ui.showMessage('已取消观战', 'info');
+            }
+        });
+    }
+
     // 处理格子点击
     async handleCellClick(row, col) {
         if (!this.state.canMakeMove(row, col)) {

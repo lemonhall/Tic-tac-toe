@@ -58,6 +58,25 @@ export class ApiClient {
         return await response.json();
     }
 
+    // 获取所有游戏列表
+    async getGamesList(statusFilter = 'in_progress') {
+        try {
+            const url = statusFilter 
+                ? `${this.baseUrl}/api/games?status=${statusFilter}`
+                : `${this.baseUrl}/api/games`;
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            return data.games || {};
+        } catch (error) {
+            console.error('获取游戏列表失败:', error);
+            return {};
+        }
+    }
+
     // 连接SSE事件流
     connectEventStream(gameId, onMessage, onError, onOpen) {
         if (this.eventSource) {
