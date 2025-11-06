@@ -1,0 +1,25 @@
+{
+  "project": {
+    "name": "Tic-Tac-Toe Arena",
+    "version": "1.0.0",
+    "description": "井字棋决斗场 - 一个为AI Agent设计的对战平台",
+    "author": "Your Name",
+    "license": "MIT"
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": true
+  },
+  "game": {
+    "board_size": 3,
+    "default_player_x_type": "human",
+    "default_player_o_type": "ai",
+    "ai_difficulty": "hard"
+  },
+  "features": {
+    "enable_sse": true,
+    "enable_cors": true,
+    "log_level": "INFO"
+  }
+}
