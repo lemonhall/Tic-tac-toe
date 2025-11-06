@@ -99,8 +99,34 @@ class ExampleAgent:
             print(f"✓ 已请求AI移动")
             return True
         else:
-            print(f"✗ 请求AI移动失败: {response.text}")
-            return False
+            data = response.json()
+            
+            # 检查是否是游戏已结束
+            if data.get('game_over'):
+                print(f"🎉 [AI请求反馈] 游戏已结束")
+                winner = data.get('winner')
+                is_draw = data.get('is_draw')
+                
+                if is_draw:
+                    print(f"🎉 [AI请求反馈] 游戏结束 - 平局！")
+                elif winner == self.player:
+                    print(f"🎉 [AI请求反馈] 游戏结束 - 我赢了！")
+                else:
+                    print(f"🎉 [AI请求反馈] 游戏结束 - 玩家 {winner} 获胜")
+                
+                # 游戏结束，停止定时器
+                self.game_active = False
+                if self.timer:
+                    self.timer.cancel()
+                
+                # 2秒后开始新游戏
+                print("\n⏳ 2秒后自动开始下一局...")
+                time.sleep(2)
+                self.start_new_game()
+                return False
+            else:
+                print(f"✗ 请求AI移动失败: {response.text}")
+                return False
     
     def check_and_move(self):
         """定时检查是否该自己下棋"""

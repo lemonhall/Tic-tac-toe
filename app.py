@@ -144,6 +144,18 @@ def ai_move(game_id):
                 "message": "游戏不存在"
             }), 404
         
+        # 检查游戏是否已结束
+        game_state = game.get_state()
+        if game_state.get('status') == 'finished':
+            return jsonify({
+                "status": "error",
+                "message": "游戏未进行中",
+                "game_over": True,
+                "winner": game_state.get('winner'),
+                "is_draw": game_state.get('is_draw'),
+                "game_state": game_state
+            }), 400
+        
         # 获取AI移动
         move = simple_ai.get_best_move(game)
         
