@@ -47,55 +47,24 @@ class RLWebPlayer:
         """将动作转换为位置"""
         return int(action // 3), int(action % 3)
     
-    def play_game(self):
-        """开始对弈 - 等待浏览器创建的游戏"""
-        print("="*60)
-        print("🎮 等待游戏开始...")
-        print("="*60)
-        print(f"\n📍 步骤:")
-        print(f"1. 在浏览器中打开: {self.base_url}")
-        print(f"2. 选择 '人类 vs AI' 模式")
-        print(f"3. 点击 '开始游戏'")
-        print(f"4. Agent 会自动接管 AI (O 玩家)")
-        print(f"\n⏳ Agent 准备就绪，等待游戏创建...\n")
-        print("-"*60)
+    def play_game(self, game_id, agent_player):
+        """对弈一局游戏
         
-        # 轮询等待新游戏
-        last_game_count = 0
-        game_id = None
+        Args:
+            game_id: 游戏 ID
+            agent_player: Agent 扮演的角色 ('X' 或 'O')
+        """
+        print(f"   连接到游戏: {game_id}")
+        print(f"   Agent 扮演 {agent_player} 玩家")
         
-        while True:
-            time.sleep(1)
-            
-            # 获取所有游戏（这需要一个新的 API 端点，或者我们监听最新的游戏）
-            # 简化版：让用户手动输入游戏 ID
-            
-            # 更好的方案：查找最新的"等待中"的游戏
-            # 但这需要修改后端 API
-            
-            # 目前最简单的方案：让用户在创建游戏后，把 game_id 告诉 Agent
-            break
-        
-        print("\n💡 请按以下步骤操作:")
-        print("1. 在浏览器中创建 '人类 vs AI' 游戏")
-        print("2. 游戏开始后，先不要下棋")
-        print("3. 打开浏览器开发者工具 (F12)")
-        print("4. 在 Console 中输入: gameState.gameId")
-        print("5. 复制游戏 ID 并粘贴到这里\n")
-        
-        game_id = input("🎯 请输入游戏 ID: ").strip()
-        
-        if not game_id:
-            print("❌ 没有输入游戏 ID")
-            return
-        
-        print(f"\n✓ 连接到游戏: {game_id}")
-        print("Agent 将扮演 O 玩家")
-        print("等待人类玩家 (X) 先手...\n")
-        print("-"*60)
+        if agent_player == 'X':
+            print("   Agent 先手！")
+        else:
+            print("   等待人类先手...")
+        print()
         
         # 监听游戏状态
-        player = 'O'  # Agent 是 O
+        player = agent_player
         
         while True:
             time.sleep(0.5)
@@ -103,8 +72,8 @@ class RLWebPlayer:
             # 获取游戏状态
             response = self.session.get(f'{self.base_url}/api/game/{game_id}/state')
             if response.status_code != 200:
-                print("❌ 获取游戏状态失败，游戏 ID 可能不正确")
-                break
+                print("   ❌ 获取游戏状态失败")
+                return None
             
             game_state = response.json()['game_state']
             board = game_state['board']
@@ -115,19 +84,17 @@ class RLWebPlayer:
             if status == 'finished':
                 winner = game_state.get('winner')
                 if winner == player:
-                    print("\n🎉 Agent 胜利!")
+                    print(f"\n   🎉 Agent ({player}) 胜利!")
+                    return 'win'
                 elif winner is None:
-                    print("\n🤝 平局!")
+                    print("\n   🤝 平局!")
+                    return 'draw'
                 else:
-                    print("\n😢 Agent 失败...")
-                
-                print("\n游戏结束！")
-                break
+                    print(f"\n   😢 Agent ({player}) 失败...")
+                    return 'loss'
             
             # 如果轮到 Agent
             if current_player == player:
-                print(f"\n🤖 Agent 思考中...")
-                
                 # 获取观察和动作掩码
                 obs = self.board_to_observation(board, player)
                 action_masks = self.get_action_masks(board)
@@ -143,11 +110,105 @@ class RLWebPlayer:
                 )
                 
                 if response.status_code == 200:
-                    print(f"✓ Agent 下在: ({row}, {col})")
-                    print("等待人类玩家...")
+                    print(f"   🤖 Agent ({player}) 下在: ({row}, {col})")
                 else:
-                    print(f"❌ 下棋失败: {response.text}")
-                    break
+                    print(f"   ❌ 下棋失败: {response.text}")
+                    return None
+    
+    def run_continuous(self):
+        """连续对战模式 - 自动检测新游戏"""
+        print("="*60)
+        print("🤖 智能连续对战模式")
+        print("="*60)
+        print(f"\n📍 使用说明:")
+        print(f"1. 在浏览器中打开: {self.base_url}")
+        print(f"2. 选择玩家配置:")
+        print(f"   - 外部Agent vs 人类 → Agent 先手 (X)")
+        print(f"   - 人类 vs 外部Agent → Agent 后手 (O)")
+        print(f"3. 点击 '开始游戏'")
+        print(f"4. Agent 会自动检测并加入游戏！")
+        print(f"5. 对弈结束后，点击 '再来一局'，Agent 会自动加入")
+        print(f"\n🎯 支持 Agent 扮演 X 或 O，无需手动输入游戏 ID！\n")
+        print(f"⏳ Agent 准备就绪，监听新游戏中...")
+        print(f"   (按 Ctrl+C 退出)\n")
+        print("-"*60)
+        
+        game_count = 0
+        wins = 0
+        losses = 0
+        draws = 0
+        processed_games = set()  # 记录已处理的游戏
+        
+        try:
+            while True:
+                time.sleep(1)  # 每秒检查一次
+                
+                # 获取所有进行中的游戏
+                response = self.session.get(f'{self.base_url}/api/games?status=in_progress')
+                if response.status_code != 200:
+                    continue
+                
+                games = response.json().get('games', {})
+                
+                # 查找需要外部 Agent 且未处理的游戏
+                for game_id, game_info in games.items():
+                    # 跳过已处理的游戏
+                    if game_id in processed_games:
+                        continue
+                    
+                    # 检查是否需要外部 Agent（X 或 O 玩家是 agent）
+                    agent_player = None
+                    if game_info['player_x_type'] == 'agent':
+                        agent_player = 'X'
+                    elif game_info['player_o_type'] == 'agent':
+                        agent_player = 'O'
+                    
+                    if agent_player:
+                        print(f"\n🎮 发现新游戏！")
+                        print(f"   游戏 ID: {game_id}")
+                        print(f"   玩家配置: {game_info['player_x_type']} vs {game_info['player_o_type']}")
+                        print(f"   Agent 扮演: {agent_player}")
+                        
+                        # 标记为已处理
+                        processed_games.add(game_id)
+                        game_count += 1
+                        
+                        print(f"\n📊 第 {game_count} 局开始...")
+                        
+                        # 开始对弈
+                        result = self.play_game(game_id, agent_player)
+                        
+                        if result == 'win':
+                            wins += 1
+                        elif result == 'loss':
+                            losses += 1
+                        elif result == 'draw':
+                            draws += 1
+                        
+                        # 显示战绩
+                        print("\n" + "="*60)
+                        print(f"📈 累计战绩: {game_count} 局")
+                        if wins + losses + draws > 0:
+                            print(f"   胜: {wins} | 负: {losses} | 平: {draws}")
+                            total = wins + losses + draws
+                            print(f"   胜率: {wins/total*100:.1f}% | 平局率: {draws/total*100:.1f}%")
+                        print("="*60)
+                        
+                        print("\n💡 在浏览器中点击 '再来一局'，Agent 会自动加入新游戏！")
+                        print("   等待下一局...")
+                        
+        except KeyboardInterrupt:
+            print("\n\n" + "="*60)
+            print("📊 最终战绩")
+            print("="*60)
+            print(f"总局数: {game_count}")
+            if wins + losses + draws > 0:
+                total = wins + losses + draws
+                print(f"胜: {wins} ({wins/total*100:.1f}%)")
+                print(f"负: {losses} ({losses/total*100:.1f}%)")
+                print(f"平: {draws} ({draws/total*100:.1f}%)")
+            print("="*60)
+            print("\n👋 感谢对弈！")
 
 
 if __name__ == '__main__':
@@ -155,7 +216,7 @@ if __name__ == '__main__':
     print("🎮 RL Agent Web 对弈模式")
     print("="*60)
     print("\n这个程序会让训练好的 RL Agent 作为玩家")
-    print("你可以在浏览器中和它对弈！\n")
+    print("你可以在浏览器中和它连续对弈多局！\n")
     
     # 检查模型文件
     import os
@@ -169,7 +230,7 @@ if __name__ == '__main__':
     player = RLWebPlayer(model_path=model_path)
     
     try:
-        player.play_game()
+        player.run_continuous()
     except KeyboardInterrupt:
         print("\n\n👋 游戏中断")
     except Exception as e:
