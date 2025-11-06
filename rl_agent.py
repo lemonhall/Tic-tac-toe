@@ -49,6 +49,8 @@ class TicTacToeEnv(gym.Env):
         self.wins = 0
         self.losses = 0
         self.draws = 0
+        self.illegal_moves = 0  # 新增：非法移动计数
+        self.errors = 0  # 新增：错误计数
         
     def _create_game(self):
         """创建新游戏"""
@@ -168,27 +170,35 @@ class TicTacToeEnv(gym.Env):
         """执行一步动作"""
         game_state = self._get_game_state()
         if not game_state:
-            return np.zeros(9, dtype=np.float32), -10, True, False, {}
+            self.losses += 1  # 统计错误
+            self.errors += 1  # 记录错误
+            return np.zeros(9, dtype=np.float32), -10, True, False, {'result': 'error'}
         
         board = game_state['board']
         
         # 检查动作是否合法
         if not self._is_valid_action(action, board):
             # 非法移动，给予惩罚并结束
+            self.losses += 1  # 统计非法移动为失败
+            self.illegal_moves += 1  # 记录非法移动
             obs = self._board_to_observation(board, self.player)
-            return obs, -5, True, False, {'illegal_move': True}
+            return obs, -5, True, False, {'illegal_move': True, 'result': 'illegal'}
         
         # 执行移动
         row, col = self._action_to_position(action)
         if not self._make_move(row, col):
-            return np.zeros(9, dtype=np.float32), -10, True, False, {}
+            self.losses += 1  # 统计移动失败
+            self.errors += 1  # 记录错误
+            return np.zeros(9, dtype=np.float32), -10, True, False, {'result': 'error'}
         
         time.sleep(0.05)  # 短暂等待服务器更新
         
         # 获取移动后的状态
         game_state = self._get_game_state()
         if not game_state:
-            return np.zeros(9, dtype=np.float32), -10, True, False, {}
+            self.losses += 1  # 统计错误
+            self.errors += 1  # 记录错误
+            return np.zeros(9, dtype=np.float32), -10, True, False, {'result': 'error'}
         
         board = game_state['board']
         status = game_state['status']
@@ -218,7 +228,9 @@ class TicTacToeEnv(gym.Env):
         # 获取对手下棋后的状态
         game_state = self._get_game_state()
         if not game_state:
-            return np.zeros(9, dtype=np.float32), -10, True, False, {}
+            self.losses += 1  # 统计错误
+            self.errors += 1  # 记录错误
+            return np.zeros(9, dtype=np.float32), -10, True, False, {'result': 'error'}
         
         board = game_state['board']
         status = game_state['status']
@@ -272,12 +284,17 @@ class TrainingCallback(BaseCallback):
                 env = vec_env
             
             total = env.wins + env.losses + env.draws
+            illegal_rate = (env.illegal_moves / env.episode_count * 100) if env.episode_count > 0 else 0
+            error_rate = (env.errors / env.episode_count * 100) if env.episode_count > 0 else 0
+            
             if total > 0:
                 win_rate = env.wins / total * 100
                 print(f"\n步数: {self.n_calls} | "
                       f"回合: {env.episode_count} | "
                       f"胜: {env.wins} | 负: {env.losses} | 平: {env.draws} | "
-                      f"胜率: {win_rate:.1f}%")
+                      f"胜率: {win_rate:.1f}% | "
+                      f"非法: {env.illegal_moves}({illegal_rate:.1f}%) | "
+                      f"错误: {env.errors}({error_rate:.1f}%)")
         return True
 
 
@@ -352,6 +369,11 @@ def train_agent(total_timesteps=10000, model_path='models/rl_agent_ppo'):
         print(f"胜利: {original_env.wins} ({original_env.wins/total*100:.1f}%)")
         print(f"失败: {original_env.losses} ({original_env.losses/total*100:.1f}%)")
         print(f"平局: {original_env.draws} ({original_env.draws/total*100:.1f}%)")
+        print(f"\n非法移动: {original_env.illegal_moves} ({original_env.illegal_moves/original_env.episode_count*100:.1f}%)")
+        print(f"网络错误: {original_env.errors} ({original_env.errors/original_env.episode_count*100:.1f}%)")
+        print(f"\n检查: 胜+负+平 = {total}, 应等于回合数 {original_env.episode_count}")
+        if total != original_env.episode_count:
+            print(f"⚠️  统计不一致！差异: {original_env.episode_count - total}")
     
     original_env.close()
     return model
