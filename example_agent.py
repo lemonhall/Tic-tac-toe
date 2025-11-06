@@ -136,6 +136,31 @@ class ExampleAgent:
         try:
             game_state = self.get_game_state()
             if game_state:
+                # 首先检查游戏是否已结束
+                status = game_state.get('status')
+                if status == 'finished':
+                    print(f"🎉 [定时检查] 游戏已结束，停止检查")
+                    self.game_active = False
+                    if self.timer:
+                        self.timer.cancel()
+                    
+                    # 显示游戏结果
+                    winner = game_state.get('winner')
+                    is_draw = game_state.get('is_draw')
+                    
+                    if is_draw:
+                        print(f"🎉 [定时检查] 游戏结束 - 平局！")
+                    elif winner == self.player:
+                        print(f"🎉 [定时检查] 游戏结束 - 我赢了！")
+                    else:
+                        print(f"🎉 [定时检查] 游戏结束 - 玩家 {winner} 获胜")
+                    
+                    # 2秒后开始新游戏
+                    print("\n⏳ 2秒后自动开始下一局...")
+                    time.sleep(2)
+                    self.start_new_game()
+                    return
+                
                 current_player = game_state.get('current_player')
                 if current_player == self.player:
                     print(f"🤖 [定时检查] 轮到我了，准备下棋...")
@@ -155,6 +180,11 @@ class ExampleAgent:
     
     def start_game(self):
         """启动游戏 - 首先尝试下一步（如果是先手），然后监听事件"""
+        # 确保之前的定时器已停止
+        if self.timer:
+            self.timer.cancel()
+            self.timer = None
+        
         print(f"我是玩家: {self.player}")
         
         # 先检查一下是否该自己下棋
@@ -259,6 +289,12 @@ class ExampleAgent:
         print("\n" + "="*50)
         print("🆕 开始新一局游戏")
         print("="*50 + "\n")
+        
+        # 确保之前的定时器已停止
+        self.game_active = False
+        if self.timer:
+            self.timer.cancel()
+            self.timer = None
         
         # 创建新游戏
         if self.create_game('agent', 'ai'):
