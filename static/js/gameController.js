@@ -13,6 +13,8 @@ export class GameController {
         
         this.currentMode = 'human-vs-human';
         this.aiMoveInProgress = false;
+        this.autoSpectateActive = false;  // 自动观战标记
+        this.autoSpectateTimer = null;    // 自动观战定时器
     }
 
     // 初始化游戏控制器
@@ -447,6 +449,84 @@ export class GameController {
         } else {
             this.ui.showMessage(`游戏结束 - 玩家 ${winner} 获胜！`, 'success');
             this.ui.showGameOverModal(winner, false);
+        }
+        
+        // 如果处于自动观战模式，延迟后自动查找下一个活跃棋局
+        if (this.autoSpectateActive) {
+            console.log('🔄 自动观战模式：等待下一个活跃棋局...');
+            this.ui.showMessage('⏳ 正在查找下一个棋局...', 'info');
+            
+            // 清除之前的定时器
+            if (this.autoSpectateTimer) {
+                clearTimeout(this.autoSpectateTimer);
+            }
+            
+            // 2秒后开始查找
+            this.autoSpectateTimer = setTimeout(() => {
+                this.findAndJoinNextGame();
+            }, 2000);
+        }
+    }
+    
+    // 启动自动观战
+    async startAutoSpectate() {
+        console.log('🎬 启动自动观战模式');
+        this.autoSpectateActive = true;
+        this.ui.showMessage('📺 自动观战模式已启动，正在查找棋局...', 'info');
+        
+        // 立即查找活跃棋局
+        await this.findAndJoinNextGame();
+    }
+    
+    // 停止自动观战
+    stopAutoSpectate() {
+        console.log('⏹️ 停止自动观战模式');
+        this.autoSpectateActive = false;
+        
+        if (this.autoSpectateTimer) {
+            clearTimeout(this.autoSpectateTimer);
+            this.autoSpectateTimer = null;
+        }
+        
+        this.ui.showMessage('已停止自动观战', 'info');
+    }
+    
+    // 查找并加入下一个活跃棋局
+    async findAndJoinNextGame() {
+        try {
+            console.log('🔍 查找活跃棋局...');
+            
+            const games = await this.api.getGamesList('in_progress');
+            const gameIds = Object.keys(games);
+            
+            if (gameIds.length === 0) {
+                console.log('⏳ 暂无活跃棋局，继续等待...');
+                this.ui.showMessage('⏳ 等待新棋局...', 'info');
+                
+                // 继续轮询，5秒后再查找
+                if (this.autoSpectateActive) {
+                    this.autoSpectateTimer = setTimeout(() => {
+                        this.findAndJoinNextGame();
+                    }, 5000);
+                }
+            } else {
+                // 获取第一个活跃棋局
+                const gameId = gameIds[0];
+                console.log(`📍 发现棋局: ${gameId}`);
+                
+                // 加入观战
+                await this.joinSpectatorGame(gameId);
+            }
+        } catch (error) {
+            console.error('❌ 查找棋局失败:', error);
+            this.ui.showMessage('查找棋局失败: ' + error.message, 'error');
+            
+            // 继续轮询
+            if (this.autoSpectateActive) {
+                this.autoSpectateTimer = setTimeout(() => {
+                    this.findAndJoinNextGame();
+                }, 5000);
+            }
         }
     }
 

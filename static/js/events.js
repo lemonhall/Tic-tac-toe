@@ -57,9 +57,9 @@ export class EventHandler {
             btn.addEventListener('click', async () => {
                 const mode = btn.dataset.mode;
                 
-                // 如果选择观战模式，触发观战流程
+                // 如果选择观战模式，启动自动观战
                 if (mode === 'spectator') {
-                    await this.controller.spectateGame();
+                    await this.controller.startAutoSpectate();
                 } else {
                     this.controller.setGameMode(mode);
                 }
