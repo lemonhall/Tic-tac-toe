@@ -387,8 +387,18 @@ export class GameController {
             case 'state_update':
                 this.handleStateUpdateEvent(data);
                 break;
+            case 'game_created':
+                // 游戏创建事件 - 通常在连接时发送，可以忽略
+                console.log('✓ 游戏已创建:', data.game_id);
+                break;
+            case 'game_deleted':
+                // 游戏被删除事件 - 游戏已过期或被清理
+                console.warn('⚠️  游戏已被删除（可能是超时）');
+                this.ui.showMessage('游戏已超时或被清理', 'error');
+                this.api.closeEventStream();
+                break;
             default:
-                console.log('未知事件类型:', data.type);
+                console.warn('⚠️  未知事件类型:', data.type);
         }
     }
 

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class GameManager:
     """游戏管理器"""
     
-    def __init__(self, game_ttl_minutes: int = 30):
+    def __init__(self, game_ttl_minutes: int = 120):  # 增加到120分钟（2小时）
         self.games: Dict[str, TicTacToeGame] = {}
         self.event_queues: Dict[str, list] = {}  # 存储每个游戏的事件队列
         self.game_timestamps: Dict[str, datetime] = {}  # 记录游戏创建时间
@@ -178,7 +178,7 @@ class GameManager:
     def _cleanup_expired_games(self):
         """
         清理过期的已完成游戏
-        保留所有进行中的游戏和最近创建的已完成游戏
+        只清理已完成的游戏，保留进行中的游戏（无论多久）
         """
         now = datetime.now()
         expired_games = []
@@ -189,16 +189,17 @@ class GameManager:
             
             game = self.games[game_id]
             
-            # 检查游戏是否已完成且超过TTL
+            # 只检查已完成的游戏
             if game.status == GameStatus.FINISHED:
                 age_minutes = (now - timestamp).total_seconds() / 60
-                if age_minutes > self.game_ttl_minutes:
+                # 已完成游戏30分钟后清理
+                if age_minutes > 30:
                     expired_games.append(game_id)
         
         # 删除过期的游戏
         for game_id in expired_games:
             self.delete_game(game_id)
-            logger.info(f"清理过期游戏: {game_id}")
+            logger.info(f"清理过期的已完成游戏: {game_id}")
     
     def cleanup_old_finished_games(self, keep_count: int = 10):
         """

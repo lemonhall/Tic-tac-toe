@@ -277,12 +277,29 @@ class ExampleAgent:
             print("\n⏳ 2秒后自动开始下一局...")
             time.sleep(2)
             self.start_new_game()
-                
+        
+        elif event_type == 'game_created':
+            # 游戏创建事件 - 通常在连接时发送，可以记录
+            print(f"✓ 游戏已创建: {event.get('game_id')}")
+        
+        elif event_type == 'game_deleted':
+            # 游戏被删除事件 - 游戏已过期或被清理
+            print("⚠️  游戏已被删除（可能是超时）")
+            self.game_active = False
+            if self.timer:
+                self.timer.cancel()
+            # 等待后自动开始新游戏
+            print("\n⏳ 2秒后自动开始新游戏...")
+            time.sleep(2)
+            self.start_new_game()
+        
         elif event_type == 'error':
-            print(f"❌ SSE错误: {event.get('message')}")
+            # 错误事件
+            message = event.get('message', '未知错误')
+            print(f"❌ SSE错误: {message}")
         
         else:
-            print(f"❓ 未知事件类型: {event_type}")
+            print(f"⚠️  未知事件类型: {event_type}")
     
     def start_new_game(self):
         """开始新一局游戏"""
