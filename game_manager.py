@@ -59,19 +59,21 @@ class GameManager:
                 "message": "游戏不存在"
             }
         
+        # 记录下棋前的玩家
+        player_before = game.current_player
+        
         result = game.make_move(row, col, player)
         
         if result["success"]:
-            # 发送移动事件
+            # 发送移动事件（player应该是下棋的玩家，即game_over之前的current_player）
             self._add_event(game_id, {
                 "type": "move",
                 "game_id": game_id,
                 "row": row,
                 "col": col,
-                "player": player or game.current_player if result.get("game_over") else 
-                         ('O' if game.current_player == 'X' else 'X'),
+                "player": player_before,  # 下棋的玩家
                 "move_number": game.move_count,
-                "next_player": result.get("next_player")
+                "next_player": result.get("next_player")  # 下一个玩家
             })
             
             # 如果游戏结束，发送游戏结束事件

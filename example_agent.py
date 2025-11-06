@@ -66,7 +66,22 @@ class ExampleAgent:
         })
         
         if response.status_code == 200:
+            data = response.json()
             print(f"✓ Agent移动: ({row}, {col})")
+            
+            # 下完棋后立即检查下一个玩家是否是AI
+            if data.get('game_state'):
+                game_state = data.get('game_state')
+                current_player = game_state.get('current_player')
+                player_x_type = game_state.get('player_x_type')
+                player_o_type = game_state.get('player_o_type')
+                current_player_type = player_x_type if current_player == 'X' else player_o_type
+                
+                # 如果现在轮到AI了，立即请求AI移动
+                if current_player_type == 'ai':
+                    print(f"🤖 现在轮到AI，请求AI移动...")
+                    self.request_ai_move()
+            
             return True
         else:
             print(f"✗ 移动失败: {response.text}")
@@ -113,9 +128,10 @@ class ExampleAgent:
         event_type = event.get('type')
         
         if event_type == 'connected':
-            print("✓ SSE连接已建立")
+            print("🔔 SSE连接已建立")
             
         elif event_type == 'state_update':
+            print("🔔 收到状态更新事件")
             game_state = event.get('game_state', {})
             current_player = game_state.get('current_player')
             
@@ -133,23 +149,13 @@ class ExampleAgent:
             col = event.get('col')
             next_player = event.get('next_player')
             
-            print(f"📍 玩家 {player} 移动到 ({row}, {col})")
+            print(f"� SSE事件: 玩家 {player} 移动到 ({row}, {col})")
             
-            # 获取游戏状态，检查下一个玩家的类型
-            game_state = self.get_game_state()
-            if game_state:
-                player_x_type = game_state.get('player_x_type')
-                player_o_type = game_state.get('player_o_type')
-                
-                # 判断下一个玩家的类型
-                next_player_type = player_x_type if next_player == 'X' else player_o_type
-                
-                # 如果下一个玩家是AI，请求AI移动
-                if next_player_type == 'ai':
-                    print(f"🤖 下一个是AI玩家，请求AI移动...")
-                    self.request_ai_move()
-                # 如果下一个是我，准备下棋
-                elif next_player == self.player:
+            # 只有当轮到我时，才需要下棋
+            # （Agent下完棋后已经在make_move中处理了AI请求）
+            if next_player == self.player:
+                game_state = self.get_game_state()
+                if game_state:
                     time.sleep(0.5)  # 模拟思考
                     board = game_state.get('board')
                     move = self.decide_move(board)
@@ -161,14 +167,14 @@ class ExampleAgent:
             is_draw = event.get('is_draw', False)
             
             if is_draw:
-                print("🤝 游戏结束 - 平局！")
+                print("🔔 SSE事件: 游戏结束 - 平局！")
             elif winner == self.player:
-                print(f"🎉 游戏结束 - 我赢了！")
+                print(f"🔔 SSE事件: 游戏结束 - 我赢了！")
             else:
-                print(f"😢 游戏结束 - 玩家 {winner} 获胜")
+                print(f"� SSE事件: 游戏结束 - 玩家 {winner} 获胜")
                 
         elif event_type == 'error':
-            print(f"❌ 错误: {event.get('message')}")
+            print(f"🔔 SSE错误: {event.get('message')}")
     
     def get_game_state(self):
         """获取游戏状态"""
