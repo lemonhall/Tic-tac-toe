@@ -49,7 +49,9 @@ htmlcov/
 *.bak
 
 # 强化学习相关
-models/
+# 注意：models/ 文件夹已提交到 GitHub
 logs/
-*.zip
 tensorboard/
+
+# 临时压缩文件（但 models/*.zip 会被提交）
+# *.zip  # 注释掉，允许 models/ 下的 .zip 文件上传
