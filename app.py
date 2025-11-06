@@ -182,6 +182,162 @@ def ai_move(game_id):
         }), 500
 
 
+@app.route('/api/game/<game_id>/timeline', methods=['GET'])
+def game_timeline(game_id):
+    """获取整局对弈时间线（只在游戏结束后可用）"""
+    try:
+        # 可选回放速度（前端用于控制展示节奏），默认1.0
+        replay_speed_raw = request.args.get('replay_speed', '1.0')
+        try:
+            replay_speed = float(replay_speed_raw)
+            if replay_speed <= 0:
+                replay_speed = 1.0
+        except ValueError:
+            replay_speed = 1.0
+
+        result = game_manager.get_timeline(game_id)
+        if result.get('status') == 'success':
+            # 注入回放速度
+            if 'timeline' in result:
+                result['timeline']['replay_speed'] = replay_speed
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        logger.error(f"获取timeline失败: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/game/<game_id>/timeline-stream')
+def game_timeline_stream(game_id):
+    """SSE：阻塞直到游戏结束后一次性推送 timeline"""
+    def generate():
+        try:
+            replay_speed_raw = request.args.get('replay_speed', '1.0')
+            try:
+                replay_speed = float(replay_speed_raw)
+                if replay_speed <= 0:
+                    replay_speed = 1.0
+            except ValueError:
+                replay_speed = 1.0
+
+            game = game_manager.get_game(game_id)
+            if not game:
+                yield f"data: {json.dumps({'type': 'error', 'message': '游戏不存在'})}\n\n"
+                return
+
+            # 如果已经结束，直接推送
+            if game.status.name == 'FINISHED' or game.status.value == 'finished':
+                result = game_manager.get_timeline(game_id)
+                if result.get('status') == 'success':
+                    if 'timeline' in result:
+                        result['timeline']['replay_speed'] = replay_speed
+                    payload = {'type': 'timeline', 'timeline': result['timeline']}
+                    yield f"data: {json.dumps(payload)}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'message': result.get('message', '无法获取timeline')})}\n\n"
+                return
+
+            last_heartbeat = time.time()
+            # 轮询直到结束
+            while True:
+                game = game_manager.get_game(game_id)
+                if not game:
+                    yield f"data: {json.dumps({'type': 'error', 'message': '游戏不存在'})}\n\n"
+                    break
+                if game.status.name == 'FINISHED' or game.status.value == 'finished':
+                    result = game_manager.get_timeline(game_id)
+                    if result.get('status') == 'success':
+                        if 'timeline' in result:
+                            result['timeline']['replay_speed'] = replay_speed
+                        payload = {'type': 'timeline', 'timeline': result['timeline']}
+                        yield f"data: {json.dumps(payload)}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'message': result.get('message', '无法获取timeline')})}\n\n"
+                    break
+                # 心跳每5秒
+                now = time.time()
+                if now - last_heartbeat > 5:
+                    yield f": heartbeat\n\n"
+                    last_heartbeat = now
+                time.sleep(0.2)
+        except GeneratorExit:
+            logger.info(f"timeline-stream 连接关闭: {game_id}")
+        except Exception as e:
+            logger.error(f"timeline-stream 错误: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
+
+
+@app.route('/api/timelines-stream')
+def global_timelines_stream():
+    """SSE：连续推送每一个已结束游戏的完整timeline（包含game_id）"""
+    def generate():
+        try:
+            replay_speed_raw = request.args.get('replay_speed', '1.0')
+            try:
+                replay_speed = float(replay_speed_raw)
+                if replay_speed <= 0:
+                    replay_speed = 1.0
+            except ValueError:
+                replay_speed = 1.0
+
+            sent_ids = set()  # 已推送的游戏ID，避免重复
+            last_heartbeat = time.time()
+            yield f"data: {json.dumps({'type': 'connected', 'mode': 'global_timelines'})}\n\n"
+
+            while True:
+                # 获取所有已结束但未推送的游戏
+                finished_ids = game_manager.get_finished_game_ids()
+                new_ids = [gid for gid in finished_ids if gid not in sent_ids]
+                for gid in new_ids:
+                    result = game_manager.get_timeline(gid)
+                    if result.get('status') == 'success':
+                        timeline = result['timeline']
+                        timeline['replay_speed'] = replay_speed
+                        payload = {
+                            'type': 'timeline',
+                            'game_id': gid,
+                            'timeline': timeline
+                        }
+                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                        sent_ids.add(gid)
+                    else:
+                        err_payload = {'type': 'error', 'game_id': gid, 'message': result.get('message', '无法获取timeline')}
+                        yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+
+                # 心跳保持连接（每10秒）
+                now = time.time()
+                if now - last_heartbeat > 10:
+                    yield f": heartbeat\n\n"
+                    last_heartbeat = now
+                time.sleep(1.0)
+        except GeneratorExit:
+            logger.info("global timelines 流连接关闭")
+        except Exception as e:
+            logger.error(f"global timelines 流错误: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
+
+
 @app.route('/api/game/<game_id>/reset', methods=['POST'])
 def reset_game(game_id):
     """

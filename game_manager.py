@@ -85,6 +85,7 @@ class GameManager:
                     "winning_line": result.get("winning_line"),
                     "is_draw": result.get("is_draw", False)
                 })
+                # 结束事件不需要立即推送整局，新的 timeline 接口统一提供
             
             return {
                 "status": "success",
@@ -217,6 +218,37 @@ class GameManager:
         for game_id, _ in finished_games[keep_count:]:
             self.delete_game(game_id)
             logger.info(f"删除旧的已完成游戏: {game_id}")
+
+    def get_timeline(self, game_id: str) -> Dict:
+        """获取指定已结束游戏的完整对弈时间线"""
+        game = self.get_game(game_id)
+        if not game:
+            return {"status": "error", "message": "游戏不存在"}
+        if game.status != GameStatus.FINISHED:
+            return {"status": "error", "message": "游戏未结束"}
+
+        duration_ms = None
+        if game.ended_at:
+            duration_ms = (game.ended_at - game.created_at).total_seconds() * 1000
+
+        timeline = {
+            "game_id": game.game_id,
+            "moves": game.move_history,  # 已含时间戳与顺序
+            "winner": game.winner,
+            "is_draw": game.winner is None and game.ended_at is not None and game.move_count == 9,
+            "winning_line": game.winning_line,
+            "total_moves": game.move_count,
+            "created_at": game.created_at.isoformat(),
+            "ended_at": game.ended_at.isoformat() if game.ended_at else None,
+            "duration_ms": duration_ms,
+            "player_x_type": game.player_x_type.value,
+            "player_o_type": game.player_o_type.value
+        }
+        return {"status": "success", "timeline": timeline}
+
+    def get_finished_game_ids(self) -> list:
+        """返回所有已结束的游戏ID列表"""
+        return [gid for gid, g in self.games.items() if g.status == GameStatus.FINISHED]
 
 
 # 全局游戏管理器实例

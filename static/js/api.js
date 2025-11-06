@@ -3,6 +3,8 @@ export class ApiClient {
     constructor(baseUrl = '') {
         this.baseUrl = baseUrl;
         this.eventSource = null;
+        this.timelineSource = null;
+        this.globalTimelineSource = null; // 全局已结束棋局时间线流
     }
 
     // 创建新游戏
@@ -112,6 +114,105 @@ export class ApiClient {
         if (this.eventSource) {
             this.eventSource.close();
             this.eventSource = null;
+        }
+    }
+
+    // 连接timeline SSE（一次性推送）
+    connectTimelineStream(gameId, replaySpeed = 1.0, onTimeline, onError, onOpen) {
+        // 关闭旧的 timelineSource
+        if (this.timelineSource) {
+            this.timelineSource.close();
+        }
+        // 不再使用普通事件流
+        if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+        }
+
+        const url = `${this.baseUrl}/api/game/${gameId}/timeline-stream?replay_speed=${encodeURIComponent(replaySpeed)}`;
+        this.timelineSource = new EventSource(url);
+
+        this.timelineSource.onopen = () => {
+            console.log('[timeline-stream] 连接已建立');
+            if (onOpen) onOpen();
+        };
+
+        this.timelineSource.onmessage = (evt) => {
+            try {
+                const data = JSON.parse(evt.data);
+                if (data.type === 'timeline') {
+                    if (onTimeline) onTimeline(data.timeline);
+                    // 只推送一次后关闭
+                    this.timelineSource.close();
+                    this.timelineSource = null;
+                }
+            } catch (err) {
+                console.error('解析 timeline SSE 数据失败:', err);
+            }
+        };
+
+        this.timelineSource.onerror = (err) => {
+            console.error('[timeline-stream] 连接错误:', err);
+            if (onError) onError(err);
+        };
+
+        return this.timelineSource;
+    }
+
+    closeTimelineStream() {
+        if (this.timelineSource) {
+            this.timelineSource.close();
+            this.timelineSource = null;
+        }
+    }
+
+    // 连接全局 timelines-stream：持续接收所有已完成游戏的timeline
+    connectGlobalTimelines(replaySpeed = 1.0, onTimeline, onError, onOpen) {
+        if (this.globalTimelineSource) {
+            this.globalTimelineSource.close();
+        }
+        // 关闭局部事件/时间线避免冲突
+        if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+        }
+        if (this.timelineSource) {
+            this.timelineSource.close();
+            this.timelineSource = null;
+        }
+
+        const url = `${this.baseUrl}/api/timelines-stream?replay_speed=${encodeURIComponent(replaySpeed)}`;
+        this.globalTimelineSource = new EventSource(url);
+
+        this.globalTimelineSource.onopen = () => {
+            console.log('[global-timelines] 连接已建立');
+            if (onOpen) onOpen();
+        };
+
+        this.globalTimelineSource.onmessage = (evt) => {
+            if (!evt.data) return;
+            try {
+                const data = JSON.parse(evt.data);
+                if (data.type === 'timeline') {
+                    if (onTimeline) onTimeline(data);
+                }
+            } catch (e) {
+                console.error('解析 global timelines 数据失败:', e);
+            }
+        };
+
+        this.globalTimelineSource.onerror = (err) => {
+            console.error('[global-timelines] 连接错误:', err);
+            if (onError) onError(err);
+        };
+
+        return this.globalTimelineSource;
+    }
+
+    closeGlobalTimelines() {
+        if (this.globalTimelineSource) {
+            this.globalTimelineSource.close();
+            this.globalTimelineSource = null;
         }
     }
 }

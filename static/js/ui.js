@@ -74,12 +74,12 @@ export class UIManager {
     updateCell(row, col, value) {
         const index = row * 3 + col;
         const cell = this.elements.cells[index];
-        
-        cell.textContent = value;
-        cell.classList.add('occupied', value.toLowerCase());
-        
-        // 播放落子音效
-        if (value) {
+        // 统一先恢复基础class，避免残留
+        cell.className = 'cell';
+        const v = (value === 'X' || value === 'O') ? value : '';
+        cell.textContent = v;
+        if (v) {
+            cell.classList.add('occupied', v.toLowerCase());
             this.playSound('move');
         }
     }

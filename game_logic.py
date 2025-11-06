@@ -36,6 +36,7 @@ class TicTacToeGame:
         self.move_history = []
         self.created_at = datetime.now()
         self.updated_at = datetime.now()
+        self.ended_at: Optional[datetime] = None  # 游戏结束时间
         
         # 玩家类型
         self.player_x_type = PlayerType(player_x_type)
@@ -90,6 +91,7 @@ class TicTacToeGame:
             self.status = GameStatus.FINISHED
             self.winner = winner
             self.winning_line = self.get_winning_line()
+            self.ended_at = datetime.now()
             return {
                 "success": True,
                 "game_over": True,
@@ -101,6 +103,7 @@ class TicTacToeGame:
         # 检查平局
         if self.is_board_full():
             self.status = GameStatus.FINISHED
+            self.ended_at = datetime.now()
             return {
                 "success": True,
                 "game_over": True,
@@ -199,6 +202,7 @@ class TicTacToeGame:
         self.move_count = 0
         self.move_history = []
         self.updated_at = datetime.now()
+        self.ended_at = None
     
     def get_state(self) -> Dict:
         """
@@ -216,7 +220,8 @@ class TicTacToeGame:
             "player_x_type": self.player_x_type.value,
             "player_o_type": self.player_o_type.value,
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
+            "ended_at": self.ended_at.isoformat() if self.ended_at else None
         }
     
     def get_available_moves(self) -> List[Tuple[int, int]]:

@@ -15,6 +15,8 @@ export class GameController {
         this.aiMoveInProgress = false;
         this.autoSpectateActive = false;  // 自动观战标记
         this.autoSpectateTimer = null;    // 自动观战定时器
+        this.timelineReplayTimers = [];   // 保存当前replay用的所有定时器，便于清理
+        this.activeTimelineGameId = null; // 当前使用timeline-stream观战的游戏ID
     }
 
     // 初始化游戏控制器
@@ -193,8 +195,15 @@ export class GameController {
                 this.state.updateFromServer(gameState);
                 this.state.setSpectatorMode(true);
                 
-                // 连接SSE
-                this.connectToGameEvents(gameId);
+                // 如果是自动观战模式，使用 timeline-stream（阻塞到结束一次性推送）
+                if (this.autoSpectateActive) {
+                    const replaySpeed = this.getReplaySpeed();
+                    console.log(`[autoSpectate] 使用 timeline-stream 观战游戏 ${gameId}, replaySpeed=${replaySpeed}`);
+                    this.startTimelineReplay(gameId, replaySpeed);
+                } else {
+                    // 普通手动观战，实时事件流
+                    this.connectToGameEvents(gameId);
+                }
                 
                 // 更新UI
                 this.ui.renderBoard(this.state.board);
@@ -480,12 +489,34 @@ export class GameController {
     
     // 启动自动观战
     async startAutoSpectate() {
-        console.log('🎬 启动自动观战模式');
+        console.log('🎬 启动自动观战模式 (全局时间线)');
         this.autoSpectateActive = true;
-        this.ui.showMessage('📺 自动观战模式已启动，正在查找棋局...', 'info');
-        
-        // 立即查找活跃棋局
-        await this.findAndJoinNextGame();
+        this.ui.showMessage('� 已连接全局时间线流，等待棋局完成...', 'info');
+        // 连接全局 timelines 流，按完成顺序接收每局
+        const replaySpeed = this.getReplaySpeed();
+        this.pendingTimelines = [];
+        this.replaying = false;
+        this.api.connectGlobalTimelines(
+            replaySpeed,
+            (data) => {
+                // data: {type:'timeline', game_id, timeline}
+                const { game_id, timeline } = data;
+                console.log(`[global-timeline] 收到已结束棋局 ${game_id}, moves=${timeline.moves.length}`);
+                // 若正在回放，排队
+                if (this.replaying) {
+                    this.pendingTimelines.push(data);
+                } else {
+                    this.playTimelineData(data);
+                }
+            },
+            (err) => {
+                console.error('global timelines 连接错误:', err);
+                this.ui.showMessage('全局时间线连接错误: ' + err.message, 'error');
+            },
+            () => {
+                console.log('[global-timelines] open');
+            }
+        );
     }
     
     // 停止自动观战
@@ -538,6 +569,126 @@ export class GameController {
                 }, 5000);
             }
         }
+    }
+
+    // ===== Timeline Replay 功能 =====
+    // 获取当前UI选择的replay速度，若未提供则默认1.0
+    getReplaySpeed() {
+        const select = document.getElementById('replay-speed');
+        if (!select) return 2.0; // 默认2.0倍速
+        const val = parseFloat(select.value);
+        return isNaN(val) ? 2.0 : val;
+    }
+
+    // 开始使用 timeline-stream 观战某个游戏（阻塞到结束后一次性获取全量时间线）
+    startTimelineReplay(gameId, replaySpeed = 1.0) {
+        // 清理旧的定时器
+        this.clearTimelineReplayTimers();
+        this.activeTimelineGameId = gameId;
+        this.ui.showMessage(`⌛ 正在等待棋局结束以获取时间线...`, 'info');
+        this.api.connectTimelineStream(
+            gameId,
+            replaySpeed,
+            (timeline) => this.handleTimelineReplay(timeline, replaySpeed),
+            (err) => {
+                console.error('timeline-stream 错误:', err);
+                this.ui.showMessage('时间线连接错误: ' + err.message, 'error');
+            },
+            () => {
+                console.log('[timeline-stream] open');
+            }
+        );
+    }
+
+    // 处理时间线（整局回放）
+    handleTimelineReplay(timeline, replaySpeed = 1.0) {
+        console.log('[timeline] 收到整局时间线:', timeline);
+        const moves = timeline.moves || [];
+        if (!moves.length) {
+            this.ui.showMessage('该棋局没有任何落子', 'warning');
+            return;
+        }
+
+        // 重置界面用于回放
+        this.ui.clearMoveHistory();
+        this.ui.hideWinningLine();
+        // 清空棋盘显示
+        for (let r = 0; r < this.state.board.length; r++) {
+            for (let c = 0; c < this.state.board[r].length; c++) {
+                this.state.board[r][c] = null;
+                this.ui.updateCell(r, c, '');
+            }
+        }
+        this.state.moveHistory = [];
+        this.state.gameStatus = 'replay';
+        this.state.winner = null;
+        this.state.winningLine = null;
+        this.ui.updateGameInfo(this.activeTimelineGameId, '-', 'replay');
+        this.ui.showMessage('▶️ 开始回放棋局...', 'success');
+
+        const startedAt = timeline.started_at ? Date.parse(timeline.started_at) : null;
+        // 如果没有 started_at 或 timestamp 差值，则均匀播放
+        let uniformInterval = 800; // ms 默认每步间隔
+
+        moves.forEach((mv, idx) => {
+            let delay;
+            if (startedAt && mv.timestamp) {
+                const mvTs = Date.parse(mv.timestamp);
+                delay = Math.max(0, mvTs - startedAt);
+            } else {
+                delay = idx * uniformInterval; // 均匀
+            }
+            // 应用速度因子
+            delay = delay / Math.max(replaySpeed, 0.01);
+
+            const timer = setTimeout(() => {
+                // 更新内部状态
+                this.state.board[mv.row][mv.col] = mv.player;
+                this.state.addMove(mv.player, mv.row, mv.col, mv.move_number);
+                // 更新UI
+                this.ui.updateCell(mv.row, mv.col, mv.player);
+                this.ui.addMoveToHistory({ player: mv.player, row: mv.row, col: mv.col, moveNumber: mv.move_number });
+                this.ui.updateGameInfo(this.activeTimelineGameId, mv.player, 'replay');
+                if (idx === moves.length - 1) {
+                    // 最后一手，显示结果
+                    this.state.gameStatus = 'finished';
+                    this.state.winner = timeline.winner || null;
+                    if (timeline.winning_line) {
+                        this.state.winningLine = timeline.winning_line;
+                        this.ui.showWinningLine(timeline.winning_line);
+                    }
+                    if (timeline.is_draw) {
+                        this.ui.showMessage('回放结束 - 平局', 'info');
+                    } else if (timeline.winner) {
+                        this.ui.showMessage(`回放结束 - 玩家 ${timeline.winner} 获胜`, 'success');
+                    } else {
+                        this.ui.showMessage('回放结束', 'info');
+                    }
+                    // 回放结束，检查队列
+                    this.replaying = false;
+                    if (this.pendingTimelines && this.pendingTimelines.length) {
+                        const next = this.pendingTimelines.shift();
+                        setTimeout(() => this.playTimelineData(next), 800);
+                    }
+                }
+            }, delay);
+            this.timelineReplayTimers.push(timer);
+        });
+        this.replaying = true;
+    }
+
+    clearTimelineReplayTimers() {
+        if (this.timelineReplayTimers.length) {
+            this.timelineReplayTimers.forEach(t => clearTimeout(t));
+            this.timelineReplayTimers = [];
+        }
+    }
+
+    // 供全局timeline数据入口调用
+    playTimelineData(data) {
+        const { game_id, timeline } = data;
+        this.activeTimelineGameId = game_id;
+        this.handleTimelineReplay(timeline, timeline.replay_speed || this.getReplaySpeed());
     }
 
     // 处理重置事件

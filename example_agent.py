@@ -19,7 +19,8 @@ class ExampleAgent:
                  sleep_after_my_move=0.05,
                  sleep_wait_ai=0.05,
                  sleep_loop=0.02,
-                 sleep_between_games=0.5):
+                 sleep_between_games=5.0,
+                 after_game_render_buffer=0.5):
         self.base_url = base_url
         self.game_id = None
         self.player = None  # 'X' or 'O'
@@ -28,7 +29,8 @@ class ExampleAgent:
         self.sleep_after_my_move = sleep_after_my_move
         self.sleep_wait_ai = sleep_wait_ai
         self.sleep_loop = sleep_loop
-        self.sleep_between_games = sleep_between_games
+        self.sleep_between_games = sleep_between_games  # 前端 timeline 模态展示总等待（含1.5秒 + 缓冲）
+        self.after_game_render_buffer = after_game_render_buffer
 
         # 连接池 + 重试，避免 DNS IPv6 回退或偶发的握手慢导致假延迟
         self.session = requests.Session()
@@ -236,8 +238,10 @@ def main():
                 agent.play_one_game()
                 
                 # 等待2秒后开始下一局
-                print(f"\n⏳ {agent.sleep_between_games}秒后自动开始下一局...")
-                time.sleep(agent.sleep_between_games)
+                # 等待前端完成：timeline 渲染 + 模态 1.5s + 缓冲
+                total_wait = agent.sleep_between_games + agent.after_game_render_buffer
+                print(f"\n⏳ 等待前端回放完成 {total_wait:.2f}s 后开始下一局...")
+                time.sleep(total_wait)
             else:
                 print("✗ 创建游戏失败，退出")
                 break
