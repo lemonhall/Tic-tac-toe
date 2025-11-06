@@ -664,6 +664,9 @@ export class GameController {
                     } else {
                         this.ui.showMessage('回放结束', 'info');
                     }
+                    // 回放结束后更新统计（观战模式的累计胜负）
+                    this.state.updateStats();
+                    this.ui.updateStats(this.state.stats);
                     // 回放结束，检查队列
                     this.replaying = false;
                     if (this.pendingTimelines && this.pendingTimelines.length) {
