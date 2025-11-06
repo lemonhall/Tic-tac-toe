@@ -213,9 +213,9 @@ class TicTacToeEnv(gym.Env):
                 self.wins += 1
                 return obs, 10, True, False, {'result': 'win'}
             elif winner is None:
-                # 平局
+                # 平局 - 对于先手,平局是不错的结果
                 self.draws += 1
-                return obs, 0, True, False, {'result': 'draw'}
+                return obs, 5, True, False, {'result': 'draw'}
             else:
                 # 输了
                 self.losses += 1
@@ -244,8 +244,9 @@ class TicTacToeEnv(gym.Env):
                 self.wins += 1
                 return obs, 10, True, False, {'result': 'win'}
             elif winner is None:
+                # 平局 - 对于先手,平局是不错的结果
                 self.draws += 1
-                return obs, 0, True, False, {'result': 'draw'}
+                return obs, 5, True, False, {'result': 'draw'}
             else:
                 self.losses += 1
                 return obs, -10, True, False, {'result': 'loss'}
