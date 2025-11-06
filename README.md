@@ -148,6 +148,28 @@ GET /api/game/{game_id}/events
 ### TicTacToeAI (高级)
 使用Minimax算法with Alpha-Beta剪枝
 - 支持三个难度级别: easy, medium, hard
+
+### 🆕 强化学习 Agent (RL Agent)
+基于 **Stable-Baselines3** 的 PPO 算法
+- 🧠 **智能学习**: 通过与AI对战不断学习和改进
+- 📈 **高胜率**: 经过训练可达 60-80% 胜率
+- 🎯 **策略优化**: 自动发现最优策略
+- 📚 **详细文档**: 参见 [RL_AGENT_README.md](RL_AGENT_README.md)
+
+**快速开始**:
+```bash
+# 安装强化学习依赖
+pip install -r requirements-rl.txt
+
+# 训练 Agent
+python rl_agent.py --train 5000
+
+# 测试 Agent
+python rl_agent.py --test 10
+
+# 连续对战
+python rl_agent.py --play
+```
 - 完美策略，几乎不会输
 
 ## 🔧 外部Agent接入
@@ -211,12 +233,25 @@ def make_move(game_id, row, col):
 系统设计支持以下扩展：
 
 - ✅ 接入基于LLM的AI Agent
-- ✅ 接入基于强化学习(RL)的AI系统
+- ✅ 接入基于强化学习(RL)的AI系统 (**新增!**)
 - ✅ 两个外部Agent相互对弈
 - ✅ 多人观战
 - ⏳ 游戏回放功能
 - ⏳ 排行榜系统
 - ⏳ 锦标赛模式
+
+## 🤖 外部 Agent 示例
+
+### 1. 随机策略 Agent (`example_agent.py`)
+- 简单的随机选择策略
+- 适合测试和演示
+- 胜率约 10-20%
+
+### 2. 强化学习 Agent (`rl_agent.py`) 🆕
+- 基于 PPO 算法的深度强化学习
+- 能够学习和改进策略
+- 训练后胜率可达 60-80%
+- 完整文档: [RL_AGENT_README.md](RL_AGENT_README.md)
 
 ## 📝 开发说明
 

@@ -1,0 +1,15 @@
+# 强化学习Agent额外依赖
+# 在已安装 requirements.txt 的基础上安装
+
+# 核心强化学习库
+stable-baselines3==2.2.1
+gymnasium==0.29.1
+
+# 数值计算
+numpy==1.24.3
+
+# 可选：TensorBoard支持（用于训练可视化）
+tensorboard==2.15.1
+
+# 可选：更好的进度条
+tqdm==4.66.1

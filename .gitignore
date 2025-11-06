@@ -47,3 +47,9 @@ htmlcov/
 # 临时文件
 *.tmp
 *.bak
+
+# 强化学习相关
+models/
+logs/
+*.zip
+tensorboard/
