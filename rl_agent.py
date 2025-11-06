@@ -370,6 +370,8 @@ def train_agent(total_timesteps=10000, model_path='models/rl_agent_ppo'):
         print(f"胜利: {original_env.wins} ({original_env.wins/total*100:.1f}%)")
         print(f"失败: {original_env.losses} ({original_env.losses/total*100:.1f}%)")
         print(f"平局: {original_env.draws} ({original_env.draws/total*100:.1f}%)")
+        print(f"\n胜率: {original_env.wins/total*100:.1f}%")
+        print(f"平局率: {original_env.draws/total*100:.1f}%")
         print(f"\n非法移动: {original_env.illegal_moves} ({original_env.illegal_moves/original_env.episode_count*100:.1f}%)")
         print(f"网络错误: {original_env.errors} ({original_env.errors/original_env.episode_count*100:.1f}%)")
         print(f"\n检查: 胜+负+平 = {total}, 应等于回合数 {original_env.episode_count}")
