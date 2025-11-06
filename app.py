@@ -2,11 +2,13 @@
 Flask API服务器
 提供RESTful API和SSE事件流
 """
-from flask import Flask, request, jsonify, Response, stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 import json
 import time
 import logging
+import os
+import mimetypes
 from game_manager import game_manager
 from ai_strategy import SimpleAI, TicTacToeAI
 
@@ -16,6 +18,14 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# 获取项目根目录
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 添加MIME类型映射
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('text/css', '.css')
+mimetypes.add_type('text/html', '.html')
 
 # 创建Flask应用
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -29,9 +39,9 @@ advanced_ai = TicTacToeAI(difficulty="hard")
 @app.route('/')
 def index():
     """
-    主页
+    主页 - 返回index.html
     """
-    return app.send_static_file('index.html')
+    return send_from_directory(BASE_DIR, 'index.html')
 
 
 @app.route('/api/game/create', methods=['POST'])
@@ -299,6 +309,20 @@ def health_check():
         "version": "1.0.0",
         "active_games": len(game_manager.games)
     })
+
+
+# 静态文件路由
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """
+    提供静态文件，带正确的MIME类型
+    """
+    mime_type = mimetypes.guess_type(filename)[0]
+    return send_from_directory(
+        os.path.join(BASE_DIR, 'static'), 
+        filename,
+        mimetype=mime_type
+    )
 
 
 # 错误处理
