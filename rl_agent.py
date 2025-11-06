@@ -93,9 +93,10 @@ class TicTacToeEnv(gym.Env):
         
         url = f'{self.base_url}/api/game/{self.game_id}/move'
         try:
+            # 确保 row 和 col 是 Python int 类型，而不是 numpy int64
             response = self.session.post(url, json={
-                'row': row,
-                'col': col
+                'row': int(row),
+                'col': int(col)
             }, timeout=5)
             return response.status_code == 200
         except Exception as e:
@@ -135,7 +136,8 @@ class TicTacToeEnv(gym.Env):
     
     def _action_to_position(self, action):
         """将动作(0-8)转换为棋盘位置(row, col)"""
-        return action // 3, action % 3
+        # 确保返回 Python int 类型
+        return int(action // 3), int(action % 3)
     
     def _is_valid_action(self, action, board):
         """检查动作是否合法（位置是否为空）"""
@@ -261,7 +263,14 @@ class TrainingCallback(BaseCallback):
     def _on_step(self):
         # 每100步显示一次统计
         if self.n_calls % 100 == 0:
-            env = self.training_env.envs[0]
+            # 从 DummyVecEnv 中获取被包装的环境
+            vec_env = self.training_env.envs[0]
+            # 如果环境被 Monitor 包装，需要访问 .env 获取原始环境
+            if hasattr(vec_env, 'env'):
+                env = vec_env.env
+            else:
+                env = vec_env
+            
             total = env.wins + env.losses + env.draws
             if total > 0:
                 win_rate = env.wins / total * 100
@@ -315,24 +324,28 @@ def train_agent(total_timesteps=10000, model_path='models/rl_agent_ppo'):
     # 训练
     print("\n开始训练...\n")
     callback = TrainingCallback()
+    
+    # 保存对原始环境的引用（在被包装之前）
+    original_env = env
+    
     model.learn(total_timesteps=total_timesteps, callback=callback)
     
     # 保存模型
     model.save(model_path)
     print(f"\n✓ 模型已保存: {model_path}.zip")
     
-    # 显示最终统计
+    # 显示最终统计（使用原始环境引用）
     print("\n" + "="*60)
     print("训练完成！")
     print("="*60)
-    total = env.wins + env.losses + env.draws
+    total = original_env.wins + original_env.losses + original_env.draws
     if total > 0:
-        print(f"总回合: {env.episode_count}")
-        print(f"胜利: {env.wins} ({env.wins/total*100:.1f}%)")
-        print(f"失败: {env.losses} ({env.losses/total*100:.1f}%)")
-        print(f"平局: {env.draws} ({env.draws/total*100:.1f}%)")
+        print(f"总回合: {original_env.episode_count}")
+        print(f"胜利: {original_env.wins} ({original_env.wins/total*100:.1f}%)")
+        print(f"失败: {original_env.losses} ({original_env.losses/total*100:.1f}%)")
+        print(f"平局: {original_env.draws} ({original_env.draws/total*100:.1f}%)")
     
-    env.close()
+    original_env.close()
     return model
 
 
