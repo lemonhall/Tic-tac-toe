@@ -39,6 +39,9 @@ export class UIManager {
             modalNewGame: document.getElementById('modal-new-game'),
             modalClose: document.getElementById('modal-close')
         };
+        
+        // 模态框自动关闭定时器
+        this.modalAutoCloseTimer = null;
     }
 
     // 渲染棋盘
@@ -197,7 +200,7 @@ export class UIManager {
     }
 
     // 显示游戏结束模态框
-    showGameOverModal(winner, isDraw) {
+    showGameOverModal(winner, isDraw, autoClose = false) {
         let title, message;
         
         if (isDraw) {
@@ -211,6 +214,18 @@ export class UIManager {
         this.elements.modalTitle.textContent = title;
         this.elements.modalMessage.textContent = message;
         this.elements.modal.classList.add('show');
+        
+        // 如果需要自动关闭，3秒后关闭模态框
+        if (autoClose) {
+            // 清除之前的定时器（如果存在）
+            if (this.modalAutoCloseTimer) {
+                clearTimeout(this.modalAutoCloseTimer);
+            }
+            
+            this.modalAutoCloseTimer = setTimeout(() => {
+                this.hideGameOverModal();
+            }, 3000);
+        }
     }
 
     // 隐藏模态框

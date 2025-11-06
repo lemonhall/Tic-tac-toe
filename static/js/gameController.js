@@ -445,10 +445,10 @@ export class GameController {
         
         if (is_draw) {
             this.ui.showMessage('游戏结束 - 平局！', 'info');
-            this.ui.showGameOverModal(null, true);
+            this.ui.showGameOverModal(null, true, this.autoSpectateActive);
         } else {
             this.ui.showMessage(`游戏结束 - 玩家 ${winner} 获胜！`, 'success');
-            this.ui.showGameOverModal(winner, false);
+            this.ui.showGameOverModal(winner, false, this.autoSpectateActive);
         }
         
         // 如果处于自动观战模式，延迟后自动查找下一个活跃棋局
