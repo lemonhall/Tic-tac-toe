@@ -438,6 +438,8 @@ def test_agent(model_path='models/rl_agent_ppo', num_games=10):
     print(f"胜利: {wins} ({wins/num_games*100:.1f}%)")
     print(f"失败: {losses} ({losses/num_games*100:.1f}%)")
     print(f"平局: {draws} ({draws/num_games*100:.1f}%)")
+    print(f"\n胜率: {wins/num_games*100:.1f}%")
+    print(f"平局率: {draws/num_games*100:.1f}%")
     
     env.close()
 

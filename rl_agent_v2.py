@@ -335,6 +335,8 @@ def train_agent_v2(total_timesteps=10000, model_path='models/rl_agent_v2_ppo'):
         print(f"胜利: {original_env.wins} ({original_env.wins/total*100:.1f}%)")
         print(f"失败: {original_env.losses} ({original_env.losses/total*100:.1f}%)")
         print(f"平局: {original_env.draws} ({original_env.draws/total*100:.1f}%)")
+        print(f"\n胜率: {original_env.wins/total*100:.1f}%")
+        print(f"平局率: {original_env.draws/total*100:.1f}%")
         print(f"\n⭐ 非法移动: {original_env.illegal_moves} (应该为 0)")
     
     original_env.close()
