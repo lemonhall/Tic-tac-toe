@@ -18,6 +18,24 @@ class ExampleAgent:
         self.game_active = False  # 游戏是否进行中
         self.timer = None  # 定时器对象
         self.game_version = 0  # 游戏版本号，用于防止旧定时器操作新游戏
+        self.restart_pending = False  # 是否已经安排了重启，避免重复开始新游戏
+        self.auto_recovering = False  # 正在进行丢失游戏自动恢复流程
+
+    def _ensure_game_alive(self):
+        """在动作前确认当前 game_id 是否仍存在，若不存在尝试自动恢复"""
+        if not self.game_id:
+            return False
+        try:
+            url = f'{self.base_url}/api/game/{self.game_id}/state'
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                return True
+            # 404 或其他错误，判定失效
+            print(f"⚠️ 游戏 {self.game_id} 不存在或已失效，准备自动恢复")
+            return False
+        except Exception as e:
+            print(f"⚠️ 检查游戏存在性异常: {e}")
+            return False
         
     def create_game(self, player_x='agent', player_o='ai'):
         """创建游戏"""
@@ -61,6 +79,15 @@ class ExampleAgent:
     
     def make_move(self, row, col):
         """执行移动"""
+        # 先确认游戏仍存在，若不存在直接恢复
+        if not self._ensure_game_alive():
+            if not self.auto_recovering:
+                self.auto_recovering = True
+                print("🔄 自动恢复：重新创建游戏并跳过本次移动")
+                self.start_new_game()
+                self.auto_recovering = False
+            return False
+
         url = f'{self.base_url}/api/game/{self.game_id}/move'
         response = requests.post(url, json={
             'row': row,
@@ -102,29 +129,26 @@ class ExampleAgent:
             
             # 检查是否是游戏已结束
             if data.get('game_over'):
-                print(f"🎉 [AI请求反馈] 游戏已结束")
-                winner = data.get('winner')
-                is_draw = data.get('is_draw')
-                
-                if is_draw:
-                    print(f"🎉 [AI请求反馈] 游戏结束 - 平局！")
-                elif winner == self.player:
-                    print(f"🎉 [AI请求反馈] 游戏结束 - 我赢了！")
-                else:
-                    print(f"🎉 [AI请求反馈] 游戏结束 - 玩家 {winner} 获胜")
-                
-                # 游戏结束，停止定时器
-                self.game_active = False
-                if self.timer:
-                    self.timer.cancel()
-                
-                # 2秒后开始新游戏
-                print("\n⏳ 2秒后自动开始下一局...")
-                time.sleep(2)
-                self.start_new_game()
+                # 统一进入结束处理逻辑
+                self.handle_game_end(
+                    winner=data.get('winner'),
+                    is_draw=data.get('is_draw'),
+                    source='AI请求反馈'
+                )
                 return False
             else:
                 print(f"✗ 请求AI移动失败: {response.text}")
+                # 如果失败原因是游戏不存在，也做恢复
+                try:
+                    msg = data.get('message')
+                    if msg and ('游戏不存在' in msg):
+                        if not self.auto_recovering:
+                            self.auto_recovering = True
+                            print("🔄 自动恢复：AI请求显示游戏不存在，重新开始")
+                            self.start_new_game()
+                            self.auto_recovering = False
+                except Exception:
+                    pass
                 return False
     
     def check_and_move(self):
@@ -146,27 +170,12 @@ class ExampleAgent:
                 # 首先检查游戏是否已结束
                 status = game_state.get('status')
                 if status == 'finished':
-                    print(f"🎉 [定时检查] 游戏已结束，停止检查")
-                    self.game_active = False
-                    if self.timer:
-                        self.timer.cancel()
-                    
-                    # 显示游戏结果
-                    winner = game_state.get('winner')
-                    is_draw = game_state.get('is_draw')
-                    
-                    if is_draw:
-                        print(f"🎉 [定时检查] 游戏结束 - 平局！")
-                    elif winner == self.player:
-                        print(f"🎉 [定时检查] 游戏结束 - 我赢了！")
-                    else:
-                        print(f"🎉 [定时检查] 游戏结束 - 玩家 {winner} 获胜")
-                    
-                    # 2秒后开始新游戏
-                    print("\n⏳ 2秒后自动开始下一局...")
-                    time.sleep(2)
-                    self.start_new_game()
-                    return  # ← 重要！返回后不再执行下面的定时器重置
+                    self.handle_game_end(
+                        winner=game_state.get('winner'),
+                        is_draw=game_state.get('is_draw'),
+                        source='定时检查'
+                    )
+                    return  # 结束后不再设置新定时器
                 
                 current_player = game_state.get('current_player')
                 if current_player == self.player:
@@ -185,6 +194,34 @@ class ExampleAgent:
             self.timer = threading.Timer(2.0, self.check_and_move)
             self.timer.daemon = True
             self.timer.start()
+
+    def handle_game_end(self, winner, is_draw, source):
+        """统一处理游戏结束，避免重复启动新游戏"""
+        if self.restart_pending:
+            # 已经安排过重启，不重复输出
+            return
+        print(f"🎉 [{source}] 游戏已结束，准备处理结果")
+        self.game_active = False
+        if self.timer:
+            self.timer.cancel()
+            self.timer = None
+        # 输出结果
+        if is_draw:
+            print(f"🎉 [{source}] 游戏结束 - 平局！")
+        elif winner == self.player:
+            print(f"🎉 [{source}] 游戏结束 - 我赢了！")
+        else:
+            print(f"🎉 [{source}] 游戏结束 - 玩家 {winner} 获胜")
+        # 标记重启已安排
+        self.restart_pending = True
+        print("\n⏳ 2秒后自动开始下一局...")
+        # 使用非阻塞定时器而不是 sleep，避免阻塞逻辑线程
+        threading.Timer(2.0, self._restart_game).start()
+
+    def _restart_game(self):
+        """实际重启游戏的回调"""
+        self.restart_pending = False
+        self.start_new_game()
     
     def start_game(self):
         """启动游戏 - 首先尝试下一步（如果是先手），然后轮询"""
