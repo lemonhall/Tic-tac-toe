@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>井字棋决斗场 - Tic-Tac-Toe Arena</title>
+    
+    <!-- 模块化CSS文件 -->
+    <link rel="stylesheet" href="static/css/reset.css">
+    <link rel="stylesheet" href="static/css/layout.css">
+    <link rel="stylesheet" href="static/css/board.css">
+    <link rel="stylesheet" href="static/css/controls.css">
+    <link rel="stylesheet" href="static/css/status.css">
+    <link rel="stylesheet" href="static/css/modal.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部标题 -->
+        <header class="header">
+            <h1>🎮 井字棋决斗场</h1>
+            <p class="subtitle">Tic-Tac-Toe Arena</p>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 左侧控制面板 -->
+            <aside class="control-panel">
+                <div class="panel-section">
+                    <h2>游戏模式</h2>
+                    <div class="mode-selector">
+                        <button class="mode-btn active" data-mode="human-vs-human">👤 vs 👤</button>
+                        <button class="mode-btn" data-mode="human-vs-ai">👤 vs 🤖</button>
+                        <button class="mode-btn" data-mode="ai-vs-ai">🤖 vs 🤖</button>
+                        <button class="mode-btn" data-mode="spectator">👁️ 观战</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2>玩家设置</h2>
+                    <div class="player-config">
+                        <div class="player-item">
+                            <label>玩家 X:</label>
+                            <select id="player-x-type" class="player-select">
+                                <option value="human">人类</option>
+                                <option value="ai">AI</option>
+                                <option value="agent">外部Agent</option>
+                            </select>
+                        </div>
+                        <div class="player-item">
+                            <label>玩家 O:</label>
+                            <select id="player-o-type" class="player-select">
+                                <option value="human">人类</option>
+                                <option value="ai">AI</option>
+                                <option value="agent">外部Agent</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2>游戏控制</h2>
+                    <div class="game-controls">
+                        <button id="start-game-btn" class="control-btn primary">开始游戏</button>
+                        <button id="reset-game-btn" class="control-btn secondary">重置游戏</button>
+                        <button id="pause-game-btn" class="control-btn secondary" disabled>暂停</button>
+                    </div>
+                </div>
+
+                <div class="panel-section">
+                    <h2>游戏信息</h2>
+                    <div class="game-info">
+                        <div class="info-item">
+                            <span class="info-label">游戏ID:</span>
+                            <span id="game-id" class="info-value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">当前回合:</span>
+                            <span id="current-turn" class="info-value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">游戏状态:</span>
+                            <span id="game-status" class="info-value">未开始</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 中间游戏区域 -->
+            <section class="game-area">
+                <!-- 状态显示 -->
+                <div class="status-bar">
+                    <div class="current-player">
+                        <span id="current-player-text">等待开始...</span>
+                    </div>
+                    <div class="connection-status">
+                        <span id="connection-indicator" class="status-dot disconnected"></span>
+                        <span id="connection-text">未连接</span>
+                    </div>
+                </div>
+
+                <!-- 棋盘 -->
+                <div class="board-container">
+                    <div id="game-board" class="game-board">
+                        <!-- 3x3网格 -->
+                        <div class="cell" data-row="0" data-col="0"></div>
+                        <div class="cell" data-row="0" data-col="1"></div>
+                        <div class="cell" data-row="0" data-col="2"></div>
+                        <div class="cell" data-row="1" data-col="0"></div>
+                        <div class="cell" data-row="1" data-col="1"></div>
+                        <div class="cell" data-row="1" data-col="2"></div>
+                        <div class="cell" data-row="2" data-col="0"></div>
+                        <div class="cell" data-row="2" data-col="1"></div>
+                        <div class="cell" data-row="2" data-col="2"></div>
+                    </div>
+                    
+                    <!-- 获胜线条 -->
+                    <svg class="win-line" id="win-line">
+                        <line x1="0" y1="0" x2="0" y2="0" stroke="#4CAF50" stroke-width="8" stroke-linecap="round"/>
+                    </svg>
+                </div>
+
+                <!-- 消息显示 -->
+                <div class="message-box">
+                    <p id="game-message">选择游戏模式并开始游戏</p>
+                </div>
+            </section>
+
+            <!-- 右侧历史记录 -->
+            <aside class="history-panel">
+                <h2>游戏历史</h2>
+                <div id="move-history" class="move-history">
+                    <!-- 动态填充移动历史 -->
+                </div>
+                
+                <h2 class="stats-title">统计信息</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="stat-label">X 获胜:</span>
+                        <span id="x-wins" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">O 获胜:</span>
+                        <span id="o-wins" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">平局:</span>
+                        <span id="draws" class="stat-value">0</span>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- 游戏结束模态框 -->
+    <div id="game-over-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">游戏结束</h2>
+            </div>
+            <div class="modal-body">
+                <p id="modal-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-new-game" class="modal-btn primary">再来一局</button>
+                <button id="modal-close" class="modal-btn secondary">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模块化JavaScript文件 -->
+    <script type="module" src="static/js/main.js"></script>
+</body>
+</html>
