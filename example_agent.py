@@ -3,8 +3,6 @@
 演示如何通过API接入井字棋决斗场
 """
 import requests
-import json
-import sseclient
 import random
 import time
 import threading
@@ -179,7 +177,7 @@ class ExampleAgent:
             self.timer.start()
     
     def start_game(self):
-        """启动游戏 - 首先尝试下一步（如果是先手），然后监听事件"""
+        """启动游戏 - 首先尝试下一步（如果是先手），然后轮询"""
         # 确保之前的定时器已停止
         if self.timer:
             self.timer.cancel()
@@ -199,107 +197,9 @@ class ExampleAgent:
                 if move:
                     self.make_move(move[0], move[1])
         
-        # 启动定时检查（每2秒检查一次）
+        # 启动定时检查（每2秒检查一次）- 完全依赖轮询，无需SSE
         self.game_active = True
         self.check_and_move()
-        
-        # 然后开始监听事件（不再做任何主动下棋）
-        self.listen_events()
-    
-    def listen_events(self):
-        """纯粹监听游戏事件 - 不做任何HTTP请求"""
-        url = f'{self.base_url}/api/game/{self.game_id}/events'
-        
-        print(f"开始监听游戏事件...")
-        
-        try:
-            response = requests.get(url, stream=True, timeout=None)
-            client = sseclient.SSEClient(response)
-            
-            for event in client.events():
-                if event.data:
-                    try:
-                        data = json.loads(event.data)
-                        self.handle_event(data)
-                    except json.JSONDecodeError as e:
-                        print(f"❌ JSON解析错误: {e}")
-                    except Exception as e:
-                        print(f"❌ 处理事件出错: {e}")
-                        
-        except KeyboardInterrupt:
-            print("\n游戏中断")
-            self.game_active = False
-            if self.timer:
-                self.timer.cancel()
-        except Exception as e:
-            print(f"❌ SSE错误: {e}")
-            self.game_active = False
-            if self.timer:
-                self.timer.cancel()
-    
-    def handle_event(self, event):
-        """处理游戏事件 - 纯粹打印，不做任何HTTP请求"""
-        event_type = event.get('type')
-        
-        if event_type == 'connected':
-            print("🔔 SSE连接已建立")
-            
-        elif event_type == 'state_update':
-            print("🔔 收到状态更新事件")
-                    
-        elif event_type == 'move':
-            player = event.get('player')
-            row = event.get('row')
-            col = event.get('col')
-            next_player = event.get('next_player')
-            
-            print(f"🔔 SSE事件: 玩家 {player} 移动到 ({row}, {col})")
-            
-            # 只打印，不处理逻辑
-                        
-        elif event_type == 'game_over':
-            winner = event.get('winner')
-            is_draw = event.get('is_draw', False)
-            
-            # 游戏结束，停止定时器
-            self.game_active = False
-            if self.timer:
-                self.timer.cancel()
-            
-            if is_draw:
-                print("🎉 SSE事件: 游戏结束 - 平局！")
-            elif winner == self.player:
-                print(f"🎉 SSE事件: 游戏结束 - 我赢了！")
-            else:
-                print(f"🎉 SSE事件: 游戏结束 - 玩家 {winner} 获胜")
-            
-            # 等待2秒后自动开始下一局
-            print("\n⏳ 2秒后自动开始下一局...")
-            time.sleep(2)
-            self.start_new_game()
-        
-        elif event_type == 'game_created':
-            # 游戏创建事件 - 通常在连接时发送，可以记录
-            print(f"✓ 游戏已创建: {event.get('game_id')}")
-        
-        elif event_type == 'game_deleted':
-            # 游戏被删除事件 - 游戏已过期或被清理
-            print("⚠️  游戏已被删除（可能是超时）")
-            self.game_active = False
-            if self.timer:
-                self.timer.cancel()
-            # 等待后自动开始新游戏
-            print("\n⏳ 2秒后自动开始新游戏...")
-            time.sleep(2)
-            self.start_new_game()
-        
-        elif event_type == 'error':
-            # 错误事件
-            message = event.get('message', '未知错误')
-            print(f"❌ SSE错误: {message}")
-        
-        else:
-            print(f"⚠️  未知事件类型: {event_type}")
     
     def start_new_game(self):
         """开始新一局游戏"""
@@ -350,8 +250,18 @@ def main():
         print(f"\n游戏开始！访问 http://localhost:5000 查看游戏界面")
         print("按 Ctrl+C 退出\n")
         
-        # 启动游戏：先下一步，再监听事件
+        # 启动游戏：先下一步，再启动定时器循环
         agent.start_game()
+        
+        # 保持主线程运行，让定时器继续执行
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n\n👋 退出程序")
+            agent.game_active = False
+            if agent.timer:
+                agent.timer.cancel()
 
 
 if __name__ == '__main__':
