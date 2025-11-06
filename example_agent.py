@@ -1,65 +1,62 @@
 """
-外部Agent接入示例
-演示如何通过API接入井字棋决斗场
+外部Agent接入示例 - 纯轮询版本
+演示如何通过API接入井字棋决斗场，无线程，无复杂度
 """
 import requests
 import random
 import time
-import threading
 
 
 class ExampleAgent:
-    """示例Agent - 随机策略"""
+    """示例Agent - 随机策略，纯同步轮询"""
     
     def __init__(self, base_url='http://localhost:5000'):
         self.base_url = base_url
         self.game_id = None
         self.player = None  # 'X' or 'O'
-        self.game_active = False  # 游戏是否进行中
-        self.timer = None  # 定时器对象
-        self.game_version = 0  # 游戏版本号，用于防止旧定时器操作新游戏
-        self.restart_pending = False  # 是否已经安排了重启，避免重复开始新游戏
-        self.auto_recovering = False  # 正在进行丢失游戏自动恢复流程
-
-    def _ensure_game_alive(self):
-        """在动作前确认当前 game_id 是否仍存在，若不存在尝试自动恢复"""
-        if not self.game_id:
-            return False
-        try:
-            url = f'{self.base_url}/api/game/{self.game_id}/state'
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                return True
-            # 404 或其他错误，判定失效
-            print(f"⚠️ 游戏 {self.game_id} 不存在或已失效，准备自动恢复")
-            return False
-        except Exception as e:
-            print(f"⚠️ 检查游戏存在性异常: {e}")
-            return False
-        
+    
     def create_game(self, player_x='agent', player_o='ai'):
         """创建游戏"""
         url = f'{self.base_url}/api/game/create'
-        response = requests.post(url, json={
-            'player_x_type': player_x,
-            'player_o_type': player_o
-        })
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.game_id = data['game_id']
-            print(f"✓ 游戏创建成功: {self.game_id}")
+        try:
+            response = requests.post(url, json={
+                'player_x_type': player_x,
+                'player_o_type': player_o
+            }, timeout=5)
             
-            # 确定自己是哪个玩家
-            if player_x == 'agent':
-                self.player = 'X'
-            elif player_o == 'agent':
-                self.player = 'O'
-            
-            return True
-        else:
-            print(f"✗ 创建游戏失败: {response.text}")
+            if response.status_code == 200:
+                data = response.json()
+                self.game_id = data['game_id']
+                print(f"✓ 游戏创建成功: {self.game_id}")
+                
+                # 确定自己是哪个玩家
+                if player_x == 'agent':
+                    self.player = 'X'
+                elif player_o == 'agent':
+                    self.player = 'O'
+                
+                return True
+            else:
+                print(f"✗ 创建游戏失败: {response.text}")
+                return False
+        except Exception as e:
+            print(f"✗ 创建游戏异常: {e}")
             return False
+    
+    def get_game_state(self):
+        """获取游戏状态"""
+        if not self.game_id:
+            return None
+        
+        url = f'{self.base_url}/api/game/{self.game_id}/state'
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                return response.json().get('game_state')
+            return None
+        except Exception as e:
+            print(f"✗ 获取游戏状态异常: {e}")
+            return None
     
     def get_available_moves(self, board):
         """获取可用的移动"""
@@ -79,240 +76,138 @@ class ExampleAgent:
     
     def make_move(self, row, col):
         """执行移动"""
-        # 先确认游戏仍存在，若不存在直接恢复
-        if not self._ensure_game_alive():
-            if not self.auto_recovering:
-                self.auto_recovering = True
-                print("🔄 自动恢复：重新创建游戏并跳过本次移动")
-                self.start_new_game()
-                self.auto_recovering = False
+        if not self.game_id:
             return False
-
-        url = f'{self.base_url}/api/game/{self.game_id}/move'
-        response = requests.post(url, json={
-            'row': row,
-            'col': col
-        })
         
-        if response.status_code == 200:
-            data = response.json()
-            print(f"✓ Agent移动: ({row}, {col})")
+        url = f'{self.base_url}/api/game/{self.game_id}/move'
+        try:
+            response = requests.post(url, json={
+                'row': row,
+                'col': col
+            }, timeout=5)
             
-            # 下完棋后立即检查下一个玩家是否是AI
-            if data.get('game_state'):
-                game_state = data.get('game_state')
-                current_player = game_state.get('current_player')
-                player_x_type = game_state.get('player_x_type')
-                player_o_type = game_state.get('player_o_type')
-                current_player_type = player_x_type if current_player == 'X' else player_o_type
-                
-                # 如果现在轮到AI了，立即请求AI移动
-                if current_player_type == 'ai':
-                    print(f"🤖 现在轮到AI，请求AI移动...")
-                    self.request_ai_move()
-            
-            return True
-        else:
-            print(f"✗ 移动失败: {response.text}")
+            if response.status_code == 200:
+                print(f"✓ Agent移动: ({row}, {col})")
+                return True
+            else:
+                print(f"✗ 移动失败: {response.json().get('message', '未知错误')}")
+                return False
+        except Exception as e:
+            print(f"✗ 移动异常: {e}")
             return False
     
     def request_ai_move(self):
-        """请求对方AI下棋"""
+        """请求AI下棋"""
+        if not self.game_id:
+            return False
+        
         url = f'{self.base_url}/api/game/{self.game_id}/ai-move'
-        response = requests.post(url)
-        
-        if response.status_code == 200:
-            print(f"✓ 已请求AI移动")
-            return True
-        else:
-            data = response.json()
-            
-            # 检查是否是游戏已结束
-            if data.get('game_over'):
-                # 统一进入结束处理逻辑
-                self.handle_game_end(
-                    winner=data.get('winner'),
-                    is_draw=data.get('is_draw'),
-                    source='AI请求反馈'
-                )
-                return False
-            else:
-                print(f"✗ 请求AI移动失败: {response.text}")
-                # 如果失败原因是游戏不存在，也做恢复
-                try:
-                    msg = data.get('message')
-                    if msg and ('游戏不存在' in msg):
-                        if not self.auto_recovering:
-                            self.auto_recovering = True
-                            print("🔄 自动恢复：AI请求显示游戏不存在，重新开始")
-                            self.start_new_game()
-                            self.auto_recovering = False
-                except Exception:
-                    pass
-                return False
-    
-    def check_and_move(self):
-        """定时检查是否该自己下棋"""
-        if not self.game_active:
-            return
-        
-        # 捕获当前游戏版本，防止旧定时器操作新游戏
-        current_version = self.game_version
-        
         try:
-            game_state = self.get_game_state()
-            if game_state:
-                # 检查游戏版本是否已变化（新游戏已开始）
-                if self.game_version != current_version:
-                    print(f"⚠️ [定时检查] 游戏已更新，停止当前检查")
-                    return
-                
-                # 首先检查游戏是否已结束
-                status = game_state.get('status')
-                if status == 'finished':
-                    self.handle_game_end(
-                        winner=game_state.get('winner'),
-                        is_draw=game_state.get('is_draw'),
-                        source='定时检查'
-                    )
-                    return  # 结束后不再设置新定时器
-                
-                current_player = game_state.get('current_player')
-                if current_player == self.player:
-                    print(f"🤖 [定时检查] 轮到我了，准备下棋...")
-                    time.sleep(0.5)
-                    board = game_state.get('board')
-                    move = self.decide_move(board)
-                    if move:
-                        self.make_move(move[0], move[1])
+            response = requests.post(url, timeout=5)
+            
+            if response.status_code == 200:
+                print(f"✓ AI已移动")
+                return True
+            else:
+                # AI移动失败或游戏已结束
+                data = response.json()
+                if data.get('game_over'):
+                    print(f"🎉 [AI反馈] 游戏已结束")
+                    return True  # 这是正常情况（游戏结束）
+                else:
+                    print(f"✗ AI移动失败: {data.get('message', '未知错误')}")
+                    return False
         except Exception as e:
-            print(f"❌ [定时检查] 出错: {e}")
-        
-        # 重新设置定时器，2秒后再检查
-        # 注意：只有游戏还活跃且版本未变化才设置
-        if self.game_active and self.game_version == current_version:
-            self.timer = threading.Timer(2.0, self.check_and_move)
-            self.timer.daemon = True
-            self.timer.start()
-
-    def handle_game_end(self, winner, is_draw, source):
-        """统一处理游戏结束，避免重复启动新游戏"""
-        if self.restart_pending:
-            # 已经安排过重启，不重复输出
-            return
-        print(f"🎉 [{source}] 游戏已结束，准备处理结果")
-        self.game_active = False
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
-        # 输出结果
-        if is_draw:
-            print(f"🎉 [{source}] 游戏结束 - 平局！")
-        elif winner == self.player:
-            print(f"🎉 [{source}] 游戏结束 - 我赢了！")
-        else:
-            print(f"🎉 [{source}] 游戏结束 - 玩家 {winner} 获胜")
-        # 标记重启已安排
-        self.restart_pending = True
-        print("\n⏳ 2秒后自动开始下一局...")
-        # 使用非阻塞定时器而不是 sleep，避免阻塞逻辑线程
-        threading.Timer(2.0, self._restart_game).start()
-
-    def _restart_game(self):
-        """实际重启游戏的回调"""
-        self.restart_pending = False
-        self.start_new_game()
+            print(f"✗ AI移动异常: {e}")
+            return False
     
-    def start_game(self):
-        """启动游戏 - 首先尝试下一步（如果是先手），然后轮询"""
-        # 确保之前的定时器已停止
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
+    def play_one_game(self):
+        """玩一局游戏 - 纯轮询"""
+        print(f"\n我是玩家: {self.player}")
         
-        print(f"我是玩家: {self.player}")
-        
-        # 先检查一下是否该自己下棋
-        game_state = self.get_game_state()
-        if game_state:
+        while True:
+            # 获取当前状态
+            game_state = self.get_game_state()
+            if not game_state:
+                print("✗ 无法获取游戏状态，中止本局")
+                break
+            
+            status = game_state.get('status')
+            
+            # 检查游戏是否已结束
+            if status == 'finished':
+                winner = game_state.get('winner')
+                is_draw = game_state.get('is_draw')
+                
+                if is_draw:
+                    print(f"🎉 游戏结束 - 平局！")
+                elif winner == self.player:
+                    print(f"🎉 游戏结束 - 我赢了！")
+                else:
+                    print(f"🎉 游戏结束 - 玩家 {winner} 获胜")
+                break
+            
+            # 检查是否轮到我
             current_player = game_state.get('current_player')
             if current_player == self.player:
-                print(f"🤖 游戏开始，轮到我了，准备下棋...")
-                time.sleep(0.5)
+                print(f"🤖 轮到我了，准备下棋...")
+                time.sleep(0.3)
                 board = game_state.get('board')
                 move = self.decide_move(board)
                 if move:
                     self.make_move(move[0], move[1])
-        
-        # 启动定时检查（每2秒检查一次）- 完全依赖轮询，无需SSE
-        self.game_active = True
-        self.check_and_move()
-    
-    def start_new_game(self):
-        """开始新一局游戏"""
-        print("\n" + "="*50)
-        print("🆕 开始新一局游戏")
-        print("="*50 + "\n")
-        
-        # 确保之前的定时器已停止
-        self.game_active = False
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
-        
-        # 增加游戏版本号，防止旧定时器操作新游戏
-        self.game_version += 1
-        
-        # 创建新游戏
-        if self.create_game('agent', 'ai'):
-            # 启动游戏
-            self.start_game()
-    
-    def get_game_state(self):
-        """获取游戏状态"""
-        url = f'{self.base_url}/api/game/{self.game_id}/state'
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.json().get('game_state')
-        return None
+                    time.sleep(0.5)  # 下棋后稍等一下，让AI响应
+                else:
+                    print("✗ 无可用移动")
+                    break
+            else:
+                # 轮到AI，请求AI下棋
+                print(f"🤖 轮到对手，请求AI移动...")
+                self.request_ai_move()
+                time.sleep(0.5)  # 等待AI响应
+                continue
+            
+            # 每轮休眠一下，避免CPU占用
+            time.sleep(0.2)
 
 
 def main():
-    """主函数"""
+    """主函数 - 持续玩游戏"""
     print("="*50)
     print("井字棋决斗场 - Agent接入示例")
     print("="*50)
+    print(f"\n配置: 对手=AI, 玩家=X(先手)")
+    print(f"访问 http://localhost:5000 查看游戏界面")
+    print("按 Ctrl+C 退出\n")
     
-    # 创建Agent
     agent = ExampleAgent()
+    game_count = 0
     
-    # 自动选择：AI对手 + 先手(X)
-    player_x = 'agent'
-    player_o = 'ai'
+    try:
+        while True:
+            game_count += 1
+            
+            # 打印分隔符
+            print("\n" + "="*50)
+            print(f"🆕 开始第 {game_count} 局游戏")
+            print("="*50)
+            
+            # 创建新游戏
+            if agent.create_game('agent', 'ai'):
+                # 玩这一局
+                agent.play_one_game()
+                
+                # 等待2秒后开始下一局
+                print("\n⏳ 2秒后自动开始下一局...")
+                time.sleep(2)
+            else:
+                print("✗ 创建游戏失败，退出")
+                break
     
-    print(f"\n自动配置:")
-    print(f"✓ 对手: AI")
-    print(f"✓ 玩家: X (先手)")
-    print(f"✓ 对手: O")
-    
-    # 创建游戏
-    if agent.create_game(player_x, player_o):
-        print(f"\n游戏开始！访问 http://localhost:5000 查看游戏界面")
-        print("按 Ctrl+C 退出\n")
-        
-        # 启动游戏：先下一步，再启动定时器循环
-        agent.start_game()
-        
-        # 保持主线程运行，让定时器继续执行
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\n\n👋 退出程序")
-            agent.game_active = False
-            if agent.timer:
-                agent.timer.cancel()
+    except KeyboardInterrupt:
+        print(f"\n\n👋 程序已退出 (共玩了 {game_count} 局)")
 
 
 if __name__ == '__main__':
     main()
+
