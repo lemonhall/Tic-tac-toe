@@ -5,6 +5,9 @@
 stable-baselines3==2.2.1
 gymnasium==0.29.1
 
+# SB3扩展包（包含MaskablePPO等高级功能）
+sb3-contrib==2.2.1
+
 # 数值计算
 numpy==1.24.3
 

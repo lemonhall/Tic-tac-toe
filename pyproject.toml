@@ -10,6 +10,7 @@ dependencies = [
     "gymnasium>=1.2.2",
     "numpy>=2.3.4",
     "requests==2.31.0",
+    "sb3-contrib>=2.7.0",
     "sseclient-py==1.8.0",
     "stable-baselines3>=2.7.0",
     "tensorboard>=2.20.0",
