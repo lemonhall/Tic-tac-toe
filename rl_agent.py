@@ -282,11 +282,19 @@ class TrainingCallback(BaseCallback):
 
 
 def train_agent(total_timesteps=10000, model_path='models/rl_agent_ppo'):
-    """训练强化学习Agent"""
+    """
+    训练强化学习Agent
+    
+    参数:
+        total_timesteps: 训练步数（timesteps），即Agent执行动作的总次数
+                        注意：不是游戏回合数！一局游戏通常需要3-9步
+                        例如：5000步 ≈ 600-1500局游戏
+        model_path: 模型保存路径
+    """
     print("="*60)
     print("井字棋强化学习训练 - Stable-Baselines3 PPO")
     print("="*60)
-    print(f"\n训练步数: {total_timesteps}")
+    print(f"\n训练步数: {total_timesteps} (约 {total_timesteps//8}-{total_timesteps//3} 局游戏)")
     print("对手: AI")
     print(f"模型保存路径: {model_path}\n")
     
@@ -509,6 +517,8 @@ if __name__ == '__main__':
         # 默认：训练模式
         print("使用方法:")
         print("  训练: python rl_agent.py --train [步数]")
+        print("        注意：步数是timesteps（动作次数），不是游戏回合数")
+        print("        例如：5000步 ≈ 600-1500局游戏")
         print("  测试: python rl_agent.py --test [局数]")
         print("  对战: python rl_agent.py --play")
         print("\n运行默认训练...")
