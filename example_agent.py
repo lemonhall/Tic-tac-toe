@@ -107,16 +107,19 @@ class ExampleAgent:
         if not self.game_active:
             return
         
-        game_state = self.get_game_state()
-        if game_state:
-            current_player = game_state.get('current_player')
-            if current_player == self.player:
-                print(f"🤖 [定时检查] 轮到我了，准备下棋...")
-                time.sleep(0.5)
-                board = game_state.get('board')
-                move = self.decide_move(board)
-                if move:
-                    self.make_move(move[0], move[1])
+        try:
+            game_state = self.get_game_state()
+            if game_state:
+                current_player = game_state.get('current_player')
+                if current_player == self.player:
+                    print(f"🤖 [定时检查] 轮到我了，准备下棋...")
+                    time.sleep(0.5)
+                    board = game_state.get('board')
+                    move = self.decide_move(board)
+                    if move:
+                        self.make_move(move[0], move[1])
+        except Exception as e:
+            print(f"❌ [定时检查] 出错: {e}")
         
         # 重新设置定时器，2秒后再检查
         if self.game_active:
@@ -162,8 +165,10 @@ class ExampleAgent:
                     try:
                         data = json.loads(event.data)
                         self.handle_event(data)
-                    except json.JSONDecodeError:
-                        pass
+                    except json.JSONDecodeError as e:
+                        print(f"❌ JSON解析错误: {e}")
+                    except Exception as e:
+                        print(f"❌ 处理事件出错: {e}")
                         
         except KeyboardInterrupt:
             print("\n游戏中断")
@@ -171,7 +176,7 @@ class ExampleAgent:
             if self.timer:
                 self.timer.cancel()
         except Exception as e:
-            print(f"错误: {e}")
+            print(f"❌ SSE错误: {e}")
             self.game_active = False
             if self.timer:
                 self.timer.cancel()
@@ -206,14 +211,33 @@ class ExampleAgent:
                 self.timer.cancel()
             
             if is_draw:
-                print("🔔 SSE事件: 游戏结束 - 平局！")
+                print("🎉 SSE事件: 游戏结束 - 平局！")
             elif winner == self.player:
-                print(f"🔔 SSE事件: 游戏结束 - 我赢了！")
+                print(f"🎉 SSE事件: 游戏结束 - 我赢了！")
             else:
-                print(f"🔔 SSE事件: 游戏结束 - 玩家 {winner} 获胜")
+                print(f"🎉 SSE事件: 游戏结束 - 玩家 {winner} 获胜")
+            
+            # 等待2秒后自动开始下一局
+            print("\n⏳ 2秒后自动开始下一局...")
+            time.sleep(2)
+            self.start_new_game()
                 
         elif event_type == 'error':
-            print(f"🔔 SSE错误: {event.get('message')}")
+            print(f"❌ SSE错误: {event.get('message')}")
+        
+        else:
+            print(f"❓ 未知事件类型: {event_type}")
+    
+    def start_new_game(self):
+        """开始新一局游戏"""
+        print("\n" + "="*50)
+        print("🆕 开始新一局游戏")
+        print("="*50 + "\n")
+        
+        # 创建新游戏
+        if self.create_game('agent', 'ai'):
+            # 启动游戏
+            self.start_game()
     
     def get_game_state(self):
         """获取游戏状态"""
@@ -233,35 +257,14 @@ def main():
     # 创建Agent
     agent = ExampleAgent()
     
-    # 选择对手类型
-    print("\n选择对手:")
-    print("1. AI")
-    print("2. 另一个Agent")
-    print("3. 人类")
+    # 自动选择：AI对手 + 先手(X)
+    player_x = 'agent'
+    player_o = 'ai'
     
-    choice = input("请选择 (1-3): ").strip()
-    
-    opponent_map = {
-        '1': 'ai',
-        '2': 'agent',
-        '3': 'human'
-    }
-    
-    opponent = opponent_map.get(choice, 'ai')
-    
-    # 选择先后手
-    print("\n选择先后手:")
-    print("1. 我先手 (X)")
-    print("2. 对手先手 (O)")
-    
-    order = input("请选择 (1-2): ").strip()
-    
-    if order == '1':
-        player_x = 'agent'
-        player_o = opponent
-    else:
-        player_x = opponent
-        player_o = 'agent'
+    print(f"\n自动配置:")
+    print(f"✓ 对手: AI")
+    print(f"✓ 玩家: X (先手)")
+    print(f"✓ 对手: O")
     
     # 创建游戏
     if agent.create_game(player_x, player_o):
