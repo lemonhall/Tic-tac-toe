@@ -224,7 +224,13 @@ def game_events(game_id):
                 # 获取待发送的事件
                 events = game_manager.get_events(game_id)
                 
+                if events:
+                    print(f"📡 SSE推送 {len(events)} 个事件到 [{game_id[:8]}...]")
+                
                 for event in events:
+                    event_type = event.get('type')
+                    player = event.get('player', 'N/A')
+                    print(f"  → type={event_type}, player={player}")
                     event_data = json.dumps(event)
                     yield f"data: {event_data}\n\n"
                 

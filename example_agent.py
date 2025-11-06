@@ -7,6 +7,7 @@ import json
 import sseclient
 import random
 import time
+import threading
 
 
 class ExampleAgent:
@@ -16,6 +17,8 @@ class ExampleAgent:
         self.base_url = base_url
         self.game_id = None
         self.player = None  # 'X' or 'O'
+        self.game_active = False  # 游戏是否进行中
+        self.timer = None  # 定时器对象
         
     def create_game(self, player_x='agent', player_o='ai'):
         """创建游戏"""
@@ -99,12 +102,56 @@ class ExampleAgent:
             print(f"✗ 请求AI移动失败: {response.text}")
             return False
     
-    def listen_and_play(self):
-        """监听游戏事件并自动下棋"""
+    def check_and_move(self):
+        """定时检查是否该自己下棋"""
+        if not self.game_active:
+            return
+        
+        game_state = self.get_game_state()
+        if game_state:
+            current_player = game_state.get('current_player')
+            if current_player == self.player:
+                print(f"🤖 [定时检查] 轮到我了，准备下棋...")
+                time.sleep(0.5)
+                board = game_state.get('board')
+                move = self.decide_move(board)
+                if move:
+                    self.make_move(move[0], move[1])
+        
+        # 重新设置定时器，2秒后再检查
+        if self.game_active:
+            self.timer = threading.Timer(2.0, self.check_and_move)
+            self.timer.daemon = True
+            self.timer.start()
+    
+    def start_game(self):
+        """启动游戏 - 首先尝试下一步（如果是先手），然后监听事件"""
+        print(f"我是玩家: {self.player}")
+        
+        # 先检查一下是否该自己下棋
+        game_state = self.get_game_state()
+        if game_state:
+            current_player = game_state.get('current_player')
+            if current_player == self.player:
+                print(f"🤖 游戏开始，轮到我了，准备下棋...")
+                time.sleep(0.5)
+                board = game_state.get('board')
+                move = self.decide_move(board)
+                if move:
+                    self.make_move(move[0], move[1])
+        
+        # 启动定时检查（每2秒检查一次）
+        self.game_active = True
+        self.check_and_move()
+        
+        # 然后开始监听事件（不再做任何主动下棋）
+        self.listen_events()
+    
+    def listen_events(self):
+        """纯粹监听游戏事件 - 不做任何HTTP请求"""
         url = f'{self.base_url}/api/game/{self.game_id}/events'
         
         print(f"开始监听游戏事件...")
-        print(f"我是玩家: {self.player}")
         
         try:
             response = requests.get(url, stream=True, timeout=None)
@@ -120,11 +167,17 @@ class ExampleAgent:
                         
         except KeyboardInterrupt:
             print("\n游戏中断")
+            self.game_active = False
+            if self.timer:
+                self.timer.cancel()
         except Exception as e:
             print(f"错误: {e}")
+            self.game_active = False
+            if self.timer:
+                self.timer.cancel()
     
     def handle_event(self, event):
-        """处理游戏事件"""
+        """处理游戏事件 - 纯粹打印，不做任何HTTP请求"""
         event_type = event.get('type')
         
         if event_type == 'connected':
@@ -132,16 +185,6 @@ class ExampleAgent:
             
         elif event_type == 'state_update':
             print("🔔 收到状态更新事件")
-            game_state = event.get('game_state', {})
-            current_player = game_state.get('current_player')
-            
-            # 如果轮到我，下棋
-            if current_player == self.player:
-                time.sleep(0.5)  # 模拟思考时间
-                board = game_state.get('board')
-                move = self.decide_move(board)
-                if move:
-                    self.make_move(move[0], move[1])
                     
         elif event_type == 'move':
             player = event.get('player')
@@ -149,29 +192,25 @@ class ExampleAgent:
             col = event.get('col')
             next_player = event.get('next_player')
             
-            print(f"� SSE事件: 玩家 {player} 移动到 ({row}, {col})")
+            print(f"🔔 SSE事件: 玩家 {player} 移动到 ({row}, {col})")
             
-            # 只有当轮到我时，才需要下棋
-            # （Agent下完棋后已经在make_move中处理了AI请求）
-            if next_player == self.player:
-                game_state = self.get_game_state()
-                if game_state:
-                    time.sleep(0.5)  # 模拟思考
-                    board = game_state.get('board')
-                    move = self.decide_move(board)
-                    if move:
-                        self.make_move(move[0], move[1])
+            # 只打印，不处理逻辑
                         
         elif event_type == 'game_over':
             winner = event.get('winner')
             is_draw = event.get('is_draw', False)
+            
+            # 游戏结束，停止定时器
+            self.game_active = False
+            if self.timer:
+                self.timer.cancel()
             
             if is_draw:
                 print("🔔 SSE事件: 游戏结束 - 平局！")
             elif winner == self.player:
                 print(f"🔔 SSE事件: 游戏结束 - 我赢了！")
             else:
-                print(f"� SSE事件: 游戏结束 - 玩家 {winner} 获胜")
+                print(f"🔔 SSE事件: 游戏结束 - 玩家 {winner} 获胜")
                 
         elif event_type == 'error':
             print(f"🔔 SSE错误: {event.get('message')}")
@@ -229,8 +268,8 @@ def main():
         print(f"\n游戏开始！访问 http://localhost:5000 查看游戏界面")
         print("按 Ctrl+C 退出\n")
         
-        # 开始游戏循环
-        agent.listen_and_play()
+        # 启动游戏：先下一步，再监听事件
+        agent.start_game()
 
 
 if __name__ == '__main__':

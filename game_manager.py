@@ -153,6 +153,11 @@ class GameManager:
         """
         if game_id in self.event_queues:
             self.event_queues[game_id].append(event)
+            event_type = event.get('type')
+            player = event.get('player', 'N/A')
+            row = event.get('row', 'N/A')
+            col = event.get('col', 'N/A')
+            print(f"📤 事件入队 [{game_id[:8]}...]: type={event_type}, player={player}, pos=({row},{col})")
     
     def get_events(self, game_id: str) -> list:
         """
